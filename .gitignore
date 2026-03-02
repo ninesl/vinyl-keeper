@@ -1,0 +1,6 @@
+models/
+*.onnx
+__pycache__/
+.venv/
+.ruff_cache/
+.vscode/
