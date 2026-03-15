@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE vinyl_unique(
+CREATE TABLE IF NOT EXISTS vinyl_unique(
 	vinyl_id INTEGER PRIMARY KEY AUTOINCREMENT,
 	vinyl_title TEXT NOT NULL,
 	vinyl_artist TEXT NOT NULL,
@@ -12,13 +12,13 @@ CREATE TABLE vinyl_unique(
 	UNIQUE (vinyl_title, vinyl_artist, vinyl_pressing_year)
 );
 
-CREATE TABLE users(
+CREATE TABLE IF NOT EXISTS users(
 	user_id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user_name TEXT NOT NULL UNIQUE,
-	date_created TEXT NOT NULL -- TODO:Parse("Jan 6, 2006")?
+	date_created TEXT NOT NULL DEFAULT (date('now'))
 );
 
-CREATE TABLE user_vinyl_plays(
+CREATE TABLE IF NOT EXISTS user_vinyl_plays(
 	user_id INTEGER NOT NULL,
 	vinyl_id INTEGER NOT NULL,
 	plays INTEGER NOT NULL,
