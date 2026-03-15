@@ -1,20 +1,55 @@
 package main
 
 import (
-	"encoding/binary"
+	"context"
+	"database/sql"
 	"fmt"
-	"io"
 	"log"
-	"math"
 	"os"
-	"strconv"
 
 	_ "github.com/joho/godotenv/autoload"
+	_ "modernc.org/sqlite"
 
-	"github.com/ninesl/vinyl-keeper/router"
+	"github.com/ninesl/vinyl-keeper/vinyl"
 )
 
+const (
+	PNG  = "png"
+	JPG  = "jpg"
+	JPEG = "jpeg"
+)
+
+type ImageData []byte
+
+func ImageTupleFromPath(path string) (ImageData, Embedding) {
+	imgData, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("read image: %v", err)
+	}
+
+	embedding, err := RequestEmbedding(imgData)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return imgData, embedding
+}
+
+func PrepareQueries(ctx context.Context) *vinyl.Queries {
+	db, err := openDB(ctx)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	queries, err := vinyl.Prepare(ctx, db)
+	if err != nil {
+		log.Fatalf("prepare queries: %v", err)
+	}
+	return queries
+}
+
 func main() {
+
 	if len(os.Args) < 2 {
 		log.Fatalf("missing image path; expected: go run . -path/to/image.jpg")
 	}
@@ -26,80 +61,50 @@ func main() {
 		imagePath = imagePath[1:]
 	}
 
-	imgData, err := os.ReadFile(imagePath)
+	imageData, imageEmbedding := ImageTupleFromPath(imagePath)
+
+	var params = vinyl.RegisterVinylParams{
+		VinylTitle:        "Kill 'Em All",
+		VinylArtist:       "Metallica",
+		VinylPressingYear: 2022,
+		FirstPressing:     0,
+		ImageExtension:    PNG,
+		CoverRawBlob:      imageData,
+		CoverEmbedding:    EmbeddingToBlob(imageEmbedding),
+	}
+	// TODO: test 2 diff images into a new Keeper and make sure other images
+	// close to it an match the embeddings correctly
+	ctx := context.Background()
+	queries := PrepareQueries(ctx)
+	defer queries.Close()
+
+	record, err := queries.RegisterVinyl(ctx, params)
 	if err != nil {
-		log.Fatalf("read image: %v", err)
+		log.Fatalf("register vinyl: %v", err)
 	}
-
-	params, err := loadImageEmbedParams(imgData)
-	if err != nil {
-		log.Fatalf("env config: %v", err)
-	}
-
-	resp, err := router.SendImageBytes(params)
-	if err != nil {
-		log.Fatalf("send request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("read response: %v", err)
-	}
-
-	if resp.StatusCode != 200 {
-		log.Fatalf("server error %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Binary format: 4 bytes uint32 LE (image byte_length) + N*8 bytes float64 LE (embedding)
-	if len(body) < 4 {
-		log.Fatalf("response too short: %d bytes", len(body))
-	}
-
-	byteLength := binary.LittleEndian.Uint32(body[:4])
-	embeddingBytes := body[4:]
-
-	if len(embeddingBytes)%8 != 0 {
-		log.Fatalf("embedding bytes not aligned to float64: %d bytes", len(embeddingBytes))
-	}
-
-	embedding := make([]float64, len(embeddingBytes)/8)
-	for i := range embedding {
-		bits := binary.LittleEndian.Uint64(embeddingBytes[i*8 : (i+1)*8])
-		embedding[i] = math.Float64frombits(bits)
-	}
-
-	fmt.Printf("image byte_length: %d\n", byteLength)
-	fmt.Printf("embedding dim: %d\n", len(embedding))
-	n := min(10, len(embedding))
-	fmt.Printf("embedding: %v\n", embedding[:n])
-	fmt.Println("...")
+	fmt.Println(String(record))
 }
 
-func loadImageEmbedParams(imgData []byte) (router.ImageEmbedParams, error) {
-	host := os.Getenv("IMAGE_SERVICE_HOST")
-	if host == "" {
-		return router.ImageEmbedParams{}, fmt.Errorf("IMAGE_SERVICE_HOST is not set")
-	}
+func String(record vinyl.VinylUnique) string {
+	// for smaller printing
+	record.CoverRawBlob = []byte{}
+	record.CoverEmbedding = []byte{}
+	return fmt.Sprintf("%+#v\n", record)
+}
 
-	portRaw := os.Getenv("IMAGE_SERVICE_PORT")
-	if portRaw == "" {
-		return router.ImageEmbedParams{}, fmt.Errorf("IMAGE_SERVICE_PORT is not set")
+// openDB returns the sqlite3 *sql.DB via the DB_PATH env variable
+func openDB(ctx context.Context) (*sql.DB, error) {
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "./vinyls.db"
 	}
-	port, err := strconv.Atoi(portRaw)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return router.ImageEmbedParams{}, fmt.Errorf("invalid IMAGE_SERVICE_PORT: %w", err)
+		return nil, fmt.Errorf("open sqlite %q: %w", dbPath, err)
 	}
-
-	endpoint := os.Getenv("IMAGE_SERVICE_ENDPOINT")
-	if endpoint == "" {
-		return router.ImageEmbedParams{}, fmt.Errorf("IMAGE_SERVICE_ENDPOINT is not set")
+	if _, err = db.ExecContext(ctx, schemaSQL); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-
-	return router.ImageEmbedParams{
-		ImgData:  imgData,
-		Host:     host,
-		Port:     port,
-		Endpoint: endpoint,
-	}, nil
+	return db, nil
 }
