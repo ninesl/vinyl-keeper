@@ -30,6 +30,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllVinylsStmt, err = db.PrepareContext(ctx, getAllVinyls); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllVinyls: %w", err)
 	}
+	if q.getUserVinylPlaysStmt, err = db.PrepareContext(ctx, getUserVinylPlays); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserVinylPlays: %w", err)
+	}
+	if q.playVinylCollectionStmt, err = db.PrepareContext(ctx, playVinylCollection); err != nil {
+		return nil, fmt.Errorf("error preparing query PlayVinylCollection: %w", err)
+	}
+	if q.recordVinylCollectionStmt, err = db.PrepareContext(ctx, recordVinylCollection); err != nil {
+		return nil, fmt.Errorf("error preparing query RecordVinylCollection: %w", err)
+	}
 	if q.registerVinylStmt, err = db.PrepareContext(ctx, registerVinyl); err != nil {
 		return nil, fmt.Errorf("error preparing query RegisterVinyl: %w", err)
 	}
@@ -46,6 +55,21 @@ func (q *Queries) Close() error {
 	if q.getAllVinylsStmt != nil {
 		if cerr := q.getAllVinylsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllVinylsStmt: %w", cerr)
+		}
+	}
+	if q.getUserVinylPlaysStmt != nil {
+		if cerr := q.getUserVinylPlaysStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserVinylPlaysStmt: %w", cerr)
+		}
+	}
+	if q.playVinylCollectionStmt != nil {
+		if cerr := q.playVinylCollectionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing playVinylCollectionStmt: %w", cerr)
+		}
+	}
+	if q.recordVinylCollectionStmt != nil {
+		if cerr := q.recordVinylCollectionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recordVinylCollectionStmt: %w", cerr)
 		}
 	}
 	if q.registerVinylStmt != nil {
@@ -90,19 +114,25 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                DBTX
-	tx                *sql.Tx
-	createUserStmt    *sql.Stmt
-	getAllVinylsStmt  *sql.Stmt
-	registerVinylStmt *sql.Stmt
+	db                        DBTX
+	tx                        *sql.Tx
+	createUserStmt            *sql.Stmt
+	getAllVinylsStmt          *sql.Stmt
+	getUserVinylPlaysStmt     *sql.Stmt
+	playVinylCollectionStmt   *sql.Stmt
+	recordVinylCollectionStmt *sql.Stmt
+	registerVinylStmt         *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                tx,
-		tx:                tx,
-		createUserStmt:    q.createUserStmt,
-		getAllVinylsStmt:  q.getAllVinylsStmt,
-		registerVinylStmt: q.registerVinylStmt,
+		db:                        tx,
+		tx:                        tx,
+		createUserStmt:            q.createUserStmt,
+		getAllVinylsStmt:          q.getAllVinylsStmt,
+		getUserVinylPlaysStmt:     q.getUserVinylPlaysStmt,
+		playVinylCollectionStmt:   q.playVinylCollectionStmt,
+		recordVinylCollectionStmt: q.recordVinylCollectionStmt,
+		registerVinylStmt:         q.registerVinylStmt,
 	}
 }

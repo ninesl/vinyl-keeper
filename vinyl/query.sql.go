@@ -10,19 +10,12 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users(
-    user_name, date_created
-) VALUES (?, ?)
+INSERT INTO users(user_name) VALUES (?)
 RETURNING user_id, user_name, date_created
 `
 
-type CreateUserParams struct {
-	UserName    string `db:"user_name"`
-	DateCreated string `db:"date_created"`
-}
-
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.queryRow(ctx, q.createUserStmt, createUser, arg.UserName, arg.DateCreated)
+func (q *Queries) CreateUser(ctx context.Context, userName string) (User, error) {
+	row := q.queryRow(ctx, q.createUserStmt, createUser, userName)
 	var i User
 	err := row.Scan(&i.UserID, &i.UserName, &i.DateCreated)
 	return i, err
@@ -64,12 +57,104 @@ func (q *Queries) GetAllVinyls(ctx context.Context) ([]VinylUnique, error) {
 	return items, nil
 }
 
+const getUserVinylPlays = `-- name: GetUserVinylPlays :many
+SELECT user_id, vinyl_id, plays, first_played, last_played FROM user_vinyl_plays WHERE user_id = ?
+`
+
+func (q *Queries) GetUserVinylPlays(ctx context.Context, userID int64) ([]UserVinylPlay, error) {
+	rows, err := q.query(ctx, q.getUserVinylPlaysStmt, getUserVinylPlays, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserVinylPlay{}
+	for rows.Next() {
+		var i UserVinylPlay
+		if err := rows.Scan(
+			&i.UserID,
+			&i.VinylID,
+			&i.Plays,
+			&i.FirstPlayed,
+			&i.LastPlayed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const playVinylCollection = `-- name: PlayVinylCollection :one
+UPDATE user_vinyl_plays
+SET 
+    plays = plays + 1,
+    last_played = date('now')
+WHERE
+    user_id = ? AND vinyl_id = ?
+RETURNING user_id, vinyl_id, plays, first_played, last_played
+`
+
+type PlayVinylCollectionParams struct {
+	UserID  int64 `db:"user_id"`
+	VinylID int64 `db:"vinyl_id"`
+}
+
+func (q *Queries) PlayVinylCollection(ctx context.Context, arg PlayVinylCollectionParams) (UserVinylPlay, error) {
+	row := q.queryRow(ctx, q.playVinylCollectionStmt, playVinylCollection, arg.UserID, arg.VinylID)
+	var i UserVinylPlay
+	err := row.Scan(
+		&i.UserID,
+		&i.VinylID,
+		&i.Plays,
+		&i.FirstPlayed,
+		&i.LastPlayed,
+	)
+	return i, err
+}
+
+const recordVinylCollection = `-- name: RecordVinylCollection :one
+INSERT INTO user_vinyl_plays (user_id, vinyl_id, plays)
+VALUES (?, ?, 0)
+ON CONFLICT(user_id, vinyl_id)
+DO UPDATE SET 
+    plays = plays + 1,
+    first_played = COALESCE(first_played, date('now')),
+    last_played = date('now')
+RETURNING user_id, vinyl_id, plays, first_played, last_played
+`
+
+type RecordVinylCollectionParams struct {
+	UserID  int64 `db:"user_id"`
+	VinylID int64 `db:"vinyl_id"`
+}
+
+func (q *Queries) RecordVinylCollection(ctx context.Context, arg RecordVinylCollectionParams) (UserVinylPlay, error) {
+	row := q.queryRow(ctx, q.recordVinylCollectionStmt, recordVinylCollection, arg.UserID, arg.VinylID)
+	var i UserVinylPlay
+	err := row.Scan(
+		&i.UserID,
+		&i.VinylID,
+		&i.Plays,
+		&i.FirstPlayed,
+		&i.LastPlayed,
+	)
+	return i, err
+}
+
 const registerVinyl = `-- name: RegisterVinyl :one
 INSERT INTO vinyl_unique(
     vinyl_title, vinyl_artist, vinyl_pressing_year,
     first_pressing, image_extension,
     cover_raw_blob, cover_embedding
 ) VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(vinyl_title, vinyl_artist, vinyl_pressing_year)
+DO UPDATE SET vinyl_title = vinyl_title
 RETURNING vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, image_extension, cover_raw_blob, cover_embedding
 `
 
@@ -83,6 +168,9 @@ type RegisterVinylParams struct {
 	CoverEmbedding    []byte `db:"cover_embedding"`
 }
 
+// RETURNING only fires on rows that are written. DO NOTHING suppresses the
+// write, so RETURNING returns nothing. The no-op SET forces a write, giving
+// RETURNING the row to return. https://sqlite.org/forum/forumpost/6c153c0a6e224091
 func (q *Queries) RegisterVinyl(ctx context.Context, arg RegisterVinylParams) (VinylUnique, error) {
 	row := q.queryRow(ctx, q.registerVinylStmt, registerVinyl,
 		arg.VinylTitle,
