@@ -1,12 +1,6 @@
 #!/usr/bin/env sh
 set -eu
 
-image_path="${IMAGE_PATH:-}"
-if [ -z "$image_path" ]; then
-  echo "IMAGE_PATH is required" >&2
-  exit 1
-fi
-
 host="${IMAGE_SERVICE_HOST:-127.0.0.1}"
 port="${IMAGE_SERVICE_PORT:-8000}"
 health_url="${IMAGE_SERVICE_HEALTH_URL:-http://${host}:${port}/health}"
@@ -38,4 +32,4 @@ if ! curl -fsS "$health_url" >/dev/null 2>&1; then
   exit 1
 fi
 
-go run . "$image_path"
+go run .
