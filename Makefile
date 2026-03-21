@@ -1,4 +1,4 @@
-# Usage: IMAGE_PATH=./image.png make run-local
+# Usage: make run-local
 run-local:
 	IMAGE_SERVICE_HOST=127.0.0.1 \
 	IMAGE_SERVICE_PORT=8000 \
