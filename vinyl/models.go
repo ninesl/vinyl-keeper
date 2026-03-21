@@ -19,12 +19,15 @@ type UserVinylPlay struct {
 }
 
 type VinylUnique struct {
-	VinylID           int64  `db:"vinyl_id"`
-	VinylTitle        string `db:"vinyl_title"`
-	VinylArtist       string `db:"vinyl_artist"`
-	VinylPressingYear int64  `db:"vinyl_pressing_year"`
-	FirstPressing     int64  `db:"first_pressing"`
-	ImageExtension    string `db:"image_extension"`
-	CoverRawBlob      []byte `db:"cover_raw_blob"`
-	CoverEmbedding    []byte `db:"cover_embedding"`
+	VinylID           int64   `db:"vinyl_id"`
+	VinylTitle        string  `db:"vinyl_title"`
+	VinylArtist       string  `db:"vinyl_artist"`
+	VinylPressingYear int64   `db:"vinyl_pressing_year"`
+	FirstPressing     int64   `db:"first_pressing"`
+	DiscogsMasterID   *int64  `db:"discogs_master_id"`
+	Styles            *string `db:"styles"`
+	Genres            *string `db:"genres"`
+	ImageExtension    string  `db:"image_extension"`
+	CoverRawBlob      []byte  `db:"cover_raw_blob"`
+	CoverEmbedding    []byte  `db:"cover_embedding"`
 }
