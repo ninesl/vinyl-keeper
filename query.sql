@@ -5,9 +5,9 @@ RETURNING *;
 -- name: RegisterVinyl :one
 INSERT INTO vinyl_unique(
     vinyl_title, vinyl_artist, vinyl_pressing_year,
-    first_pressing, image_extension,
-    cover_raw_blob, cover_embedding
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    first_pressing, discogs_master_id, styles, genres,
+    image_extension, cover_raw_blob, cover_embedding
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 -- RETURNING only fires on rows that are written. DO NOTHING suppresses the
 -- write, so RETURNING returns nothing. The no-op SET forces a write, giving
 -- RETURNING the row to return. https://sqlite.org/forum/forumpost/6c153c0a6e224091
