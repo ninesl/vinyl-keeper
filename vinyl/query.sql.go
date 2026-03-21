@@ -22,7 +22,7 @@ func (q *Queries) CreateUser(ctx context.Context, userName string) (User, error)
 }
 
 const getAllVinyls = `-- name: GetAllVinyls :many
-SELECT vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, image_extension, cover_raw_blob, cover_embedding FROM vinyl_unique
+SELECT vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, discogs_master_id, styles, genres, image_extension, cover_raw_blob, cover_embedding FROM vinyl_unique
 `
 
 func (q *Queries) GetAllVinyls(ctx context.Context) ([]VinylUnique, error) {
@@ -40,6 +40,9 @@ func (q *Queries) GetAllVinyls(ctx context.Context) ([]VinylUnique, error) {
 			&i.VinylArtist,
 			&i.VinylPressingYear,
 			&i.FirstPressing,
+			&i.DiscogsMasterID,
+			&i.Styles,
+			&i.Genres,
 			&i.ImageExtension,
 			&i.CoverRawBlob,
 			&i.CoverEmbedding,
@@ -150,22 +153,25 @@ func (q *Queries) RecordVinylCollection(ctx context.Context, arg RecordVinylColl
 const registerVinyl = `-- name: RegisterVinyl :one
 INSERT INTO vinyl_unique(
     vinyl_title, vinyl_artist, vinyl_pressing_year,
-    first_pressing, image_extension,
-    cover_raw_blob, cover_embedding
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    first_pressing, discogs_master_id, styles, genres,
+    image_extension, cover_raw_blob, cover_embedding
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(vinyl_title, vinyl_artist, vinyl_pressing_year)
 DO UPDATE SET vinyl_title = vinyl_title
-RETURNING vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, image_extension, cover_raw_blob, cover_embedding
+RETURNING vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, discogs_master_id, styles, genres, image_extension, cover_raw_blob, cover_embedding
 `
 
 type RegisterVinylParams struct {
-	VinylTitle        string `db:"vinyl_title"`
-	VinylArtist       string `db:"vinyl_artist"`
-	VinylPressingYear int64  `db:"vinyl_pressing_year"`
-	FirstPressing     int64  `db:"first_pressing"`
-	ImageExtension    string `db:"image_extension"`
-	CoverRawBlob      []byte `db:"cover_raw_blob"`
-	CoverEmbedding    []byte `db:"cover_embedding"`
+	VinylTitle        string  `db:"vinyl_title"`
+	VinylArtist       string  `db:"vinyl_artist"`
+	VinylPressingYear int64   `db:"vinyl_pressing_year"`
+	FirstPressing     int64   `db:"first_pressing"`
+	DiscogsMasterID   *int64  `db:"discogs_master_id"`
+	Styles            *string `db:"styles"`
+	Genres            *string `db:"genres"`
+	ImageExtension    string  `db:"image_extension"`
+	CoverRawBlob      []byte  `db:"cover_raw_blob"`
+	CoverEmbedding    []byte  `db:"cover_embedding"`
 }
 
 // RETURNING only fires on rows that are written. DO NOTHING suppresses the
@@ -177,6 +183,9 @@ func (q *Queries) RegisterVinyl(ctx context.Context, arg RegisterVinylParams) (V
 		arg.VinylArtist,
 		arg.VinylPressingYear,
 		arg.FirstPressing,
+		arg.DiscogsMasterID,
+		arg.Styles,
+		arg.Genres,
 		arg.ImageExtension,
 		arg.CoverRawBlob,
 		arg.CoverEmbedding,
@@ -188,6 +197,9 @@ func (q *Queries) RegisterVinyl(ctx context.Context, arg RegisterVinylParams) (V
 		&i.VinylArtist,
 		&i.VinylPressingYear,
 		&i.FirstPressing,
+		&i.DiscogsMasterID,
+		&i.Styles,
+		&i.Genres,
 		&i.ImageExtension,
 		&i.CoverRawBlob,
 		&i.CoverEmbedding,
