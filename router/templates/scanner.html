@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinyl Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <h1>Vinyl Scanner</h1>
+  
+  <nav class="nav">
+    <a href="/scanner">Scanner</a>
+    <a href="/albums">All Albums</a>
+    <a href="/register">Register</a>
+  </nav>
+  
+  <div id="video-container">
+    <video id="camera" autoplay playsinline></video>
+    <div id="alignment-box"></div>
+  </div>
+  
+  <button id="scan-btn" onclick="scanAndSubmit()">SCAN</button>
+  
+  <canvas id="canvas"></canvas>
+  
+  <div id="result"></div>
+
+  <script>
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scanBtn = document.getElementById('scan-btn');
+    const resultDiv = document.getElementById('result');
+
+    // Start camera on load
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 1280 }
+          }
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        console.error('Camera error:', err);
+        resultDiv.innerHTML = '<p class="error">Could not access camera. Please grant camera permissions.</p>';
+      }
+    }
+
+    // Capture frame from video, crop to alignment box, return JPEG blob
+    function captureFrame() {
+      const box = document.getElementById('alignment-box');
+      const videoRect = video.getBoundingClientRect();
+      const boxRect = box.getBoundingClientRect();
+      
+      // Calculate the position relative to video element
+      const scaleX = video.videoWidth / videoRect.width;
+      const scaleY = video.videoHeight / videoRect.height;
+      
+      const cropX = (boxRect.left - videoRect.left) * scaleX;
+      const cropY = (boxRect.top - videoRect.top) * scaleY;
+      const cropWidth = boxRect.width * scaleX;
+      const cropHeight = boxRect.height * scaleY;
+      
+      // Set canvas to alignment box size
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+      
+      // Draw just the alignment region from video
+      ctx.drawImage(
+        video,
+        cropX,
+        cropY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        cropWidth,
+        cropHeight
+      );
+      
+      // Return as JPEG blob
+      return new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/jpeg', 0.9);
+      });
+    }
+
+    // Send frame to server
+    async function scanAndSubmit() {
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'SCANNING...';
+      resultDiv.innerHTML = '<p class="loading">Scanning vinyl cover...</p>';
+      
+      try {
+        const blob = await captureFrame();
+        
+        const response = await fetch('/search/html', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'image/jpeg',
+          },
+          body: blob
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+        
+        const html = await response.text();
+        resultDiv.innerHTML = html;
+      } catch (err) {
+        console.error('Scan error:', err);
+        resultDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'SCAN';
+      }
+    }
+
+    function tryAgain() {
+      resultDiv.innerHTML = '';
+    }
+
+    initCamera();
+  </script>
+</body>
+</html>

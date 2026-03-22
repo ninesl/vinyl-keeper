@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Album Collection</title>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Album Collection</h1>
+    <div class="stats">{{len .Vinyls}} albums</div>
+  </header>
+
+  <nav class="nav">
+    <a href="/scanner">Scanner</a>
+    <a href="/albums">All Albums</a>
+    <a href="/register">Register</a>
+  </nav>
+
+  {{if .Vinyls}}
+  <div class="albums-grid">
+    {{range .Vinyls}}
+    <div class="album-card" id="vinyl-{{.VinylID}}">
+      <img 
+        class="album-cover" 
+        src="data:image/{{.ImageExtension}};base64,{{index $.Images .VinylID}}" 
+        alt="{{.VinylTitle}} by {{.VinylArtist}}"
+        loading="lazy"
+      />
+      <div class="album-info">
+        <div class="album-title">{{.VinylTitle}}</div>
+        <div class="album-artist">{{.VinylArtist}}</div>
+        <div class="album-year-genre">{{.VinylPressingYear}}{{if .Genres}} - {{derefString .Genres}}{{end}}</div>
+        {{if .Styles}}
+        <div class="album-styles">{{derefString .Styles}}</div>
+        {{end}}
+        <button class="delete-btn" 
+                hx-delete="/delete/{{.VinylID}}" 
+                hx-target="#vinyl-{{.VinylID}}"
+                hx-swap="outerHTML"
+                hx-confirm="Are you sure you want to delete this vinyl?">
+          Delete
+        </button>
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <h2>No Albums Yet</h2>
+    <p>Start by <a href="/scanner">scanning your first vinyl</a></p>
+  </div>
+  {{end}}
+</body>
+</html>
