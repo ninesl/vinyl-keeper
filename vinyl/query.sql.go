@@ -21,6 +21,15 @@ func (q *Queries) CreateUser(ctx context.Context, userName string) (User, error)
 	return i, err
 }
 
+const deleteVinyl = `-- name: DeleteVinyl :exec
+DELETE FROM vinyl_unique WHERE vinyl_id = ?
+`
+
+func (q *Queries) DeleteVinyl(ctx context.Context, vinylID int64) error {
+	_, err := q.exec(ctx, q.deleteVinylStmt, deleteVinyl, vinylID)
+	return err
+}
+
 const getAllVinyls = `-- name: GetAllVinyls :many
 SELECT vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, discogs_master_id, styles, genres, image_extension, cover_raw_blob, cover_embedding FROM vinyl_unique
 `
