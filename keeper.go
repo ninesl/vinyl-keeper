@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -31,6 +32,8 @@ type Keeper interface {
 	KeepRecord(vinylID int64) error // makes an entry for the record, returns an error if exists already
 	PlayRecord(vinylID int64) error // ++ to the numPlays of the vinylID, saves the record if not already logged
 	NumPlays(vinylID int64) int     // Number of plays this vinylID has had in this Keeper
+	AllVinyl() []vinyl.VinylUnique
+	DeleteVinyl(vinylID int64) error // removes vinyl from DB and in-memory caches
 }
 
 type keeper struct {
@@ -50,11 +53,33 @@ func NewKeeper() (Keeper, error) {
 	return k, err
 }
 
+func (k *keeper) AllVinyl() []vinyl.VinylUnique {
+	v, err := k.queries.GetAllVinyls(k.ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return v
+}
+
 func (k *keeper) RegisterVinylUnique(args vinyl.RegisterVinylParams) (vinyl.VinylUnique, error) {
 	vinylUnique, err := k.queries.RegisterVinyl(k.ctx, args)
 	if err != nil {
 		return vinyl.VinylUnique{}, err
 	}
+
+	// Decode embedding from the returned vinyl record
+	emb, err := EmbeddingFromBlob(vinylUnique.CoverEmbedding)
+	if err != nil {
+		return vinyl.VinylUnique{}, fmt.Errorf("failed to decode embedding for vinyl %d: %w", vinylUnique.VinylID, err)
+	}
+
+	// Update in-memory caches with proper locking
+	k.mu.Lock()
+	k.vinylLookup[vinylUnique.VinylID] = vinylUnique
+	k.embeddingLookup[vinylUnique.VinylID] = emb
+	k.mu.Unlock()
+
 	return vinylUnique, nil
 }
 
@@ -129,11 +154,14 @@ func requestDiscogs(albumTitle, artist string) (discogsResp, error) {
 		Timeout: time.Second * 10,
 	}
 
+	format := "&format=album"
 	// Step 1: Search for the release
-	searchURL := fmt.Sprintf("https://api.discogs.com/database/search?release_title=%s&artist=%s&format=vinyl&per_page=1&page=1",
+	searchURL := fmt.Sprintf("https://api.discogs.com/database/search?release_title=%s&artist=%s%s&per_page=1&page=1",
 		strings.ReplaceAll(albumTitle, " ", "%20"),
-		strings.ReplaceAll(artist, " ", "%20"))
+		strings.ReplaceAll(artist, " ", "%20"),
+		format)
 
+	log.Printf("Discogs search: %s", searchURL)
 	searchResp, err := httpClient.Get(searchURL)
 	if err != nil {
 		return discogsResp{}, fmt.Errorf("search request failed: %w", err)
@@ -161,6 +189,7 @@ func requestDiscogs(albumTitle, artist string) (discogsResp, error) {
 
 	// Step 2: Get master release details
 	masterURL := fmt.Sprintf("https://api.discogs.com/masters/%d", masterID)
+	log.Printf("Discogs master: %s", masterURL)
 	masterResp, err := httpClient.Get(masterURL)
 	if err != nil {
 		return discogsResp{}, fmt.Errorf("master request failed: %w", err)
@@ -202,6 +231,7 @@ func requestDiscogs(albumTitle, artist string) (discogsResp, error) {
 	}
 
 	// Step 3: Download the image
+	log.Printf("Discogs image: %s", imageURI)
 	imageResp, err := httpClient.Get(imageURI)
 	if err != nil {
 		return discogsResp{}, fmt.Errorf("image download failed: %w", err)
@@ -303,6 +333,22 @@ func (k *keeper) NumPlays(vinylID int64) int {
 	return k.numPlays[vinylID]
 }
 
+func (k *keeper) DeleteVinyl(vinylID int64) error {
+	// Delete from database
+	if err := k.queries.DeleteVinyl(k.ctx, vinylID); err != nil {
+		return fmt.Errorf("failed to delete vinyl %d from database: %w", vinylID, err)
+	}
+
+	// Remove from in-memory caches with proper locking
+	k.mu.Lock()
+	delete(k.vinylLookup, vinylID)
+	delete(k.embeddingLookup, vinylID)
+	delete(k.numPlays, vinylID)
+	k.mu.Unlock()
+
+	return nil
+}
+
 func (k *keeper) initKeeper(ctx context.Context) error {
 	k.ctx = ctx
 	// Initialize DB and queries
@@ -318,8 +364,15 @@ func (k *keeper) initKeeper(ctx context.Context) error {
 		return err
 	}
 	k.vinylLookup = make(map[int64]vinyl.VinylUnique)
+	k.embeddingLookup = make(map[int64]Embedding)
 	for _, v := range vinyls {
 		k.vinylLookup[v.VinylID] = v
+		// Decode embedding from blob
+		emb, err := EmbeddingFromBlob(v.CoverEmbedding)
+		if err != nil {
+			return fmt.Errorf("failed to decode embedding for vinyl %d: %w", v.VinylID, err)
+		}
+		k.embeddingLookup[v.VinylID] = emb
 	}
 	userPlays, err := k.queries.GetUserVinylPlays(k.ctx, k.userID) // userID assumed 0
 	if err != nil {
@@ -367,18 +420,23 @@ func (k *keeper) checkIfExists(vinylID int64) bool {
 }
 
 // ensureDefaultUser ensures that a user with name "User" exists in the database
+// and sets k.userID to the user's ID
 func (k *keeper) ensureDefaultUser() error {
-	_, err := k.queries.CreateUser(k.ctx, "User")
+	user, err := k.queries.CreateUser(k.ctx, "User")
 	if err != nil {
 		// Check if error is due to UNIQUE constraint (user already exists)
 		if liteErr, ok := err.(*sqlite.Error); ok {
 			code := liteErr.Code()
 			if code == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-				return nil // User already exists, this is fine
+				// User already exists, we need to look up their ID
+				// For now, we'll assume userID = 1 since this is the first/only user
+				k.userID = 1
+				return nil
 			}
 		}
 		return fmt.Errorf("create default user: %w", err)
 	}
+	k.userID = user.UserID
 	return nil
 }
 
@@ -404,15 +462,15 @@ func (k *keeper) FindClosestVinyl(input Embedding) vinyl.VinylUnique {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
-	var vinylID int64
+	var bestVinylID int64
 	maxSimilarity := -1.0
-	for vinylID, v := range k.embeddingLookup {
-		similarity := cosineSimilarity(input, v)
+	for vID, embedding := range k.embeddingLookup {
+		similarity := cosineSimilarity(input, embedding)
 		if similarity > maxSimilarity {
 			maxSimilarity = similarity
-			vinylID = int64(vinylID)
+			bestVinylID = vID
 		}
 	}
 
-	return k.vinylLookup[vinylID]
+	return k.vinylLookup[bestVinylID]
 }
