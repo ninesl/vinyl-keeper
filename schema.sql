@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS user_vinyl_plays(
 	first_played TEXT, -- DATE
 	last_played TEXT, -- DATE
 	PRIMARY KEY (user_id, vinyl_id),
-	FOREIGN KEY (user_id) REFERENCES users(user_id),
-	FOREIGN KEY (vinyl_id) REFERENCES vinyl_unique(vinyl_id)
+	FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+	FOREIGN KEY (vinyl_id) REFERENCES vinyl_unique(vinyl_id) ON DELETE CASCADE
 );
 
