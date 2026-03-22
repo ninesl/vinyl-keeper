@@ -39,3 +39,6 @@ RETURNING *;
 
 -- name: GetUserVinylPlays :many
 SELECT * FROM user_vinyl_plays WHERE user_id = ?;
+
+-- name: DeleteVinyl :exec
+DELETE FROM vinyl_unique WHERE vinyl_id = ?;
