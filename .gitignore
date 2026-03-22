@@ -1,3 +1,5 @@
+*.md
+*.mp4
 models/
 *.onnx
 __pycache__/
