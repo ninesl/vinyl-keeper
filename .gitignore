@@ -9,4 +9,5 @@ __pycache__/
 *.jpeg
 *.png
 *.jpg
+videos/
 *.db
