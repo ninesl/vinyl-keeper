@@ -71,12 +71,12 @@ func RequestEmbedding(imgData []byte) (Embedding, error) {
 		return nil, fmt.Errorf("server error %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Binary format: 4 bytes uint32 LE (image byte_length) + N*8 bytes float64 LE (embedding)
-	if len(body) < 4 {
-		return nil, fmt.Errorf("response too short: %d bytes", len(body))
+	// Binary format: raw float64 LE bytes (embedding)
+	if len(body) == 0 {
+		return nil, fmt.Errorf("empty response from image service")
 	}
 
-	emb, err := EmbeddingFromBlob(body[4:])
+	emb, err := EmbeddingFromBlob(body)
 	if err != nil {
 		return nil, fmt.Errorf("parse embedding: %w", err)
 	}
