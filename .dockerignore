@@ -1,0 +1,12 @@
+.git
+.gitignore
+.ruff_cache
+.venv
+.vscode
+*.db
+*.mp4
+vinyl-keeper
+image_service/.venv
+image_service/.vscode
+image_service/__pycache__
+image_service/*.pyc
