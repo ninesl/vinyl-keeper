@@ -1,6 +1,5 @@
 import io
 import os
-import struct
 
 import numpy as np
 import onnxruntime as ort
@@ -62,8 +61,8 @@ def preprocess(img_bytes: bytes) -> np.ndarray:
 
 
 @app.get("/health")
-def health() -> dict:
-    return {"status": "ok"}
+def health():
+    return Response(status_code=200)
 
 
 @app.post("/embed")
@@ -76,9 +75,9 @@ async def embed(request: Request) -> Response:
     result = session.run(["embedding"], {"image": tensor})
     embedding = result[0][0]  # shape (512,) float32
 
-    # Convert to float64 little-endian bytes: 4 bytes uint32 byte_length + N*8 bytes float64
+    # Convert to float64 little-endian bytes
     embedding_f64 = embedding.astype(np.float64)
-    byte_length = struct.pack("<I", len(raw))
-    payload = byte_length + embedding_f64.tobytes()
 
-    return Response(content=payload, media_type="application/octet-stream")
+    return Response(
+        content=embedding_f64.tobytes(), media_type="application/octet-stream"
+    )
