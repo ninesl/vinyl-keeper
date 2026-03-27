@@ -79,11 +79,9 @@ func (r *Router) wrap(handler http.HandlerFunc) http.HandlerFunc {
 
 func (r *Router) ServeHTTP() (http.Handler, error) {
 	mux := http.NewServeMux()
-
 	for _, config := range r.routes {
 		handler := r.wrap(config.HandlerFunc)
 		pattern := fmt.Sprintf("%s %s", config.Method, config.Endpoint)
-
 		if config.Endpoint == "/" {
 			mux.HandleFunc(pattern, func(w http.ResponseWriter, req *http.Request) {
 				if req.URL.Path != "/" {
@@ -96,6 +94,5 @@ func (r *Router) ServeHTTP() (http.Handler, error) {
 			mux.HandleFunc(pattern, handler)
 		}
 	}
-
 	return mux, nil
 }
