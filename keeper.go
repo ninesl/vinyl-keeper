@@ -13,6 +13,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -99,20 +100,6 @@ type keeperRegisterVinylParams interface {
 // so we want an image url/image source. I think that pasting a image url from anywhere works. Then it saves the raw image into
 // sqlite under a Blob and we can note the image extension pretty easily by parsing the url/source file}
 
-/*
-	func (krp KeeperRegisterUniqueVinylParams) rawImageFromURL() ([]byte, string, error) {
-		albumCoverURI, err := url.ParseRequestURI(krp.AlbumCoverURI)
-		if err != nil {
-			return nil, "", err
-		}
-
-		// scrape for image
-		// if path is n
-
-		return nil, "", nil
-	}
-*/
-
 type discogsResp struct {
 	masterID      int
 	title, artist string
@@ -143,6 +130,10 @@ type discogsMasterResp struct {
 	} `json:"images"`
 }
 
+// this gets the first master release from the input string
+// will only really work for an album and not 45s, live albums (without saying very specific terms)
+// eventually we will need multiple []discogsResp of the releases
+// we can then maybe determine pressing, etc off that? Not there yet regardless
 func requestDiscogs(albumTitle, artist string) (discogsResp, error) {
 	albumTitle = strings.TrimSpace(albumTitle)
 	artist = strings.TrimSpace(artist)
@@ -387,13 +378,29 @@ func (k *keeper) initKeeper(ctx context.Context) error {
 
 const dbFileName = "vinylkeeper.db"
 
+func databasePath() string {
+	if path := os.Getenv("DB_PATH"); path != "" {
+		return path
+	}
+
+	return dbFileName
+}
+
 // initializeQueries creates or loads the DB and assigns to k.queries
 func (k *keeper) initializeQueries(ctx context.Context) error {
-	_, err := os.Stat(dbFileName)
+	dbPath := databasePath()
+	dir := filepath.Dir(dbPath)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create db directory %q: %w", dir, err)
+		}
+	}
+
+	_, err := os.Stat(dbPath)
 	isNew := errors.Is(err, fs.ErrNotExist)
-	db, err := sql.Open("sqlite", dbFileName)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return fmt.Errorf("open sqlite %q: %w", dbFileName, err)
+		return fmt.Errorf("open sqlite %q: %w", dbPath, err)
 	}
 	if isNew {
 		if _, err = db.ExecContext(ctx, schemaSQL); err != nil {
@@ -417,6 +424,16 @@ func (k *keeper) checkIfExists(vinylID int64) bool {
 		return true
 	}
 	return false
+}
+
+func (k *keeper) GetVinyl(vinylID int64) *vinyl.VinylUnique {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	v, exists := k.vinylLookup[vinylID]
+	if !exists {
+		return nil
+	}
+	return &v
 }
 
 // ensureDefaultUser ensures that a user with name "User" exists in the database
