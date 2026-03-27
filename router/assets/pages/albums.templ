@@ -1,0 +1,95 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/ninesl/vinyl-keeper/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/vinyl"
+)
+
+templ AlbumsPage(title string, vinyls []vinyl.VinylUnique) {
+	@ui.Layout(title) {
+		<header>
+			<h1>Album Collection</h1>
+			<div class="stats">{ fmt.Sprintf("%d", len(vinyls)) } albums</div>
+		</header>
+		@ui.Nav()
+		if len(vinyls) > 0 {
+			<div class="albums-grid">
+				for _, v := range vinyls {
+					@AlbumCard(v)
+				}
+			</div>
+		} else {
+			<div class="empty-state">
+				<h2>No Albums Yet</h2>
+				<p>Start by <a href="/scanner">scanning your first vinyl</a></p>
+			</div>
+		}
+	}
+}
+
+templ AlbumCard(v vinyl.VinylUnique) {
+	<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
+		<img
+			class="album-cover"
+			src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+			alt={ v.VinylTitle + " by " + v.VinylArtist }
+			loading="lazy"
+		/>
+		<div class="album-info">
+			<div class="album-title">{ v.VinylTitle }</div>
+			<div class="album-artist">{ v.VinylArtist }</div>
+			<div class="album-year-genre">
+				{ fmt.Sprintf("%d", v.VinylPressingYear) }
+				if v.Genres != nil {
+					- { *v.Genres }
+				}
+			</div>
+			if v.Styles != nil {
+				<div class="album-styles">{ *v.Styles }</div>
+			}
+			<button
+				class="delete-btn"
+				hx-delete={ fmt.Sprintf("/delete/%d", v.VinylID) }
+				hx-target={ fmt.Sprintf("#vinyl-%d", v.VinylID) }
+				hx-swap="outerHTML"
+				hx-confirm="Are you sure you want to delete this vinyl?"
+			>
+				Delete
+			</button>
+		</div>
+	</div>
+}
+
+templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
+	<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
+		<img
+			class="album-cover"
+			src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+			alt={ v.VinylTitle + " by " + v.VinylArtist }
+		/>
+		<div class="album-info">
+			<div class="album-title">{ v.VinylTitle }</div>
+			<div class="album-artist">{ v.VinylArtist }</div>
+			<div class="album-year-genre">
+				{ fmt.Sprintf("%d", v.VinylPressingYear) }
+				if v.Genres != nil {
+					- { *v.Genres }
+				}
+			</div>
+			if v.Styles != nil {
+				<div class="album-styles">{ *v.Styles }</div>
+			}
+			<div class="match-confidence">Match: { fmt.Sprintf("%.1f", similarity) }%</div>
+			<button
+				class="delete-btn"
+				hx-delete={ fmt.Sprintf("/delete/%d", v.VinylID) }
+				hx-target={ fmt.Sprintf("#vinyl-%d", v.VinylID) }
+				hx-swap="outerHTML"
+				hx-confirm="Are you sure you want to delete this vinyl?"
+			>
+				Delete
+			</button>
+		</div>
+	</div>
+}

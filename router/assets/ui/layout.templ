@@ -1,0 +1,25 @@
+package ui
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title }</title>
+			<script src="/assets/static/htmx.js"></script>
+			<link rel="stylesheet" href="/assets/static/styles.css"/>
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}
+
+templ Nav() {
+	<nav class="nav">
+		<a href="/scanner">Scanner</a>
+		<a href="/albums">All Albums</a>
+		<a href="/register">Register</a>
+	</nav>
+}
