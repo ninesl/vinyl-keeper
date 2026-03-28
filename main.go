@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -31,8 +33,54 @@ import (
 	"github.com/ninesl/vinyl-keeper/vinyl"
 )
 
+//go:embed router/assets/static
+var staticFS embed.FS
+
+func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
+	// Search endpoint (JSON response)
+	r.Route(http.MethodPost,
+		values.EndpointSearch,
+		router.ScanCoverHandler(router.ScanHandlerParams{
+			GetEmbedding: func(imgData []byte) (router.Embedding, error) {
+				emb, err := RequestEmbedding(imgData)
+				if err != nil {
+					return nil, err
+				}
+				// Convert Embedding type to router.Embedding
+				result := make(router.Embedding, len(emb))
+				copy(result, emb)
+				return result, nil
+			},
+			FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
+				// Convert router.Embedding to main.Embedding
+				mainEmb := make(Embedding, len(emb))
+				copy(mainEmb, emb)
+				return keeper.FindClosestVinyl(mainEmb)
+			},
+		}))
+
+	// Search endpoint (HTML response for scanner)
+	r.Route(http.MethodPost,
+		values.EndpointSearch+values.EndpointHTMX,
+		router.ScanCoverHTMLHandler(router.ScanHandlerParams{
+			GetEmbedding: func(imgData []byte) (router.Embedding, error) {
+				emb, err := RequestEmbedding(imgData)
+				if err != nil {
+					return nil, err
+				}
+				result := make(router.Embedding, len(emb))
+				copy(result, emb)
+				return result, nil
+			},
+			FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
+				mainEmb := make(Embedding, len(emb))
+				copy(mainEmb, emb)
+				return keeper.FindClosestVinyl(mainEmb)
+			},
+		}))
+}
+
 func main() {
-	// Initialize keeper
 	k, err := NewKeeper()
 	if err != nil {
 		log.Fatalf("failed to create keeper: %v", err)
@@ -40,90 +88,61 @@ func main() {
 
 	keeper := k.(*keeper)
 
-	// Setup router
 	r := router.NewRouter()
 
-	// Health check
 	r.Route(http.MethodGet, values.EndpointHealth, router.HealthHandler)
 
-	// Serve static assets
-	fileServer := http.FileServer(http.Dir("router/assets/static"))
-	staticPath := values.EndpointAssets + "/" + values.SegmentStatic + "/"
-	r.Route(http.MethodGet, staticPath, func(w http.ResponseWriter, req *http.Request) {
-		http.StripPrefix(staticPath, fileServer).ServeHTTP(w, req)
-	})
+	staticSub, err := fs.Sub(staticFS, "router/assets/static")
+	if err != nil {
+		log.Fatalf("failed to create static fs: %v", err)
+	}
+	r.Route(http.MethodGet,
+		values.EndpointAssets+values.EndpointStatic+"/{path...}",
+		http.StripPrefix(
+			values.EndpointAssets+values.EndpointStatic,
+			http.FileServer(http.FS(staticSub))).ServeHTTP)
 
-	// Scanner page
-	r.Route(http.MethodGet, values.EndpointScanner, router.ScannerPageHandler)
+	r.Route(http.MethodGet,
+		values.EndpointScanner,
+		router.ScannerPageHandler)
 
-	// Albums page
-	r.Route(http.MethodGet, values.EndpointAlbums, router.AlbumsPageHandler(keeper.AllVinyl))
+	r.Route(http.MethodGet,
+		values.EndpointAlbums,
+		router.AlbumsPageHandler(keeper.AllVinyl))
 
-	// Register page
-	r.Route(http.MethodGet, values.EndpointRoot+values.SegmentRegister, router.RegisterPageHandler)
+	r.Route(http.MethodGet,
+		values.EndpointRegister,
+		router.RegisterPageHandler)
+
+	setEmbeddingRoutes(r, keeper)
 
 	// Register submit (HTMX endpoint)
-	r.Route(http.MethodGet, values.EndpointRoot+values.SegmentRegister+"/"+values.SegmentSubmit, router.RegisterSubmitHandler(router.RegisterHandlerParams{
-		RegisterVinyl: func(artist, album string) (vinyl.VinylUnique, error) {
-			params, err := RegisterUniqueVinylQueryParams(album, artist)
-			if err != nil {
-				return vinyl.VinylUnique{}, err
-			}
-			return keeper.RegisterVinylUnique(params)
-		},
-	}))
+	r.Route(http.MethodGet,
+		values.EndpointRegister+values.EndpointSubmit,
+		router.RegisterSubmitHandler(router.RegisterHandlerParams{
+			RegisterVinyl: func(artist, album string) (vinyl.VinylUnique, error) {
+				params, err := RegisterUniqueVinylQueryParams(album, artist)
+				if err != nil {
+					return vinyl.VinylUnique{}, err
+				}
+				return keeper.RegisterVinylUnique(params)
+			},
+		}))
 
-	// Search endpoint (JSON response)
-	r.Route(http.MethodPost, values.EndpointSearch, router.ScanCoverHandler(router.ScanHandlerParams{
-		GetEmbedding: func(imgData []byte) (router.Embedding, error) {
-			emb, err := RequestEmbedding(imgData)
-			if err != nil {
-				return nil, err
-			}
-			// Convert Embedding type to router.Embedding
-			result := make(router.Embedding, len(emb))
-			copy(result, emb)
-			return result, nil
-		},
-		FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
-			// Convert router.Embedding to main.Embedding
-			mainEmb := make(Embedding, len(emb))
-			copy(mainEmb, emb)
-			return keeper.FindClosestVinyl(mainEmb)
-		},
-	}))
+	r.Route(http.MethodDelete,
+		values.EndpointDelete+"/"+values.PageParam(values.ParamVinylID),
+		router.DeleteVinylHandler(router.DeleteHandlerParams{
+			DeleteVinyl: func(vinylID int64) error {
+				return keeper.DeleteVinyl(vinylID)
+			},
+		}))
 
-	// Search endpoint (HTML response for scanner)
-	r.Route(http.MethodPost, values.EndpointSearch+"/"+values.SegmentHTML, router.ScanCoverHTMLHandler(router.ScanHandlerParams{
-		GetEmbedding: func(imgData []byte) (router.Embedding, error) {
-			emb, err := RequestEmbedding(imgData)
-			if err != nil {
-				return nil, err
-			}
-			result := make(router.Embedding, len(emb))
-			copy(result, emb)
-			return result, nil
-		},
-		FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
-			mainEmb := make(Embedding, len(emb))
-			copy(mainEmb, emb)
-			return keeper.FindClosestVinyl(mainEmb)
-		},
-	}))
+	r.Route(http.MethodGet,
+		values.EndpointCover+"/"+values.PageParam(values.ParamVinylID),
+		router.HandleServeAlbumImage(router.ServeAlbumImageHandlerParams{
+			GetVinyl: keeper.GetVinyl,
+		}))
 
-	// Delete vinyl
-	r.Route(http.MethodDelete, values.EndpointDelete+"/"+values.PageParam(values.ParamVinylID), router.DeleteVinylHandler(router.DeleteHandlerParams{
-		DeleteVinyl: func(vinylID int64) error {
-			return keeper.DeleteVinyl(vinylID)
-		},
-	}))
-
-	// Serve album cover images
-	r.Route(http.MethodGet, values.EndpointCover+"/"+values.PageParam(values.ParamVinylID), router.HandleServeAlbumImage(router.ServeAlbumImageHandlerParams{
-		GetVinyl: keeper.GetVinyl,
-	}))
-
-	// Start server
 	handler, err := r.ServeHTTP()
 	if err != nil {
 		log.Fatalf("failed to setup router: %v", err)

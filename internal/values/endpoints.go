@@ -1,23 +1,18 @@
 package values
 
-// Base path segments
 const (
-	EndpointRoot    = "/"
-	EndpointHealth  = "/health"
-	EndpointScanner = "/scanner"
-	EndpointAlbums  = "/albums"
-	EndpointSearch  = "/search"
-	EndpointCover   = "/cover"
-	EndpointDelete  = "/delete"
-	EndpointAssets  = "/assets"
-)
+	EndpointHealth   = "/health"
+	EndpointScanner  = "/scanner"
+	EndpointAlbums   = "/albums"
+	EndpointSearch   = "/search"
+	EndpointCover    = "/cover"
+	EndpointDelete   = "/delete"
+	EndpointAssets   = "/assets"
+	EndpointRegister = "/register"
 
-// Nested path segments (no leading slash)
-const (
-	SegmentRegister = "register"
-	SegmentSubmit   = "submit"
-	SegmentStatic   = "static"
-	SegmentHTML     = "html"
+	EndpointSubmit = "/submit"
+	EndpointStatic = "/static"
+	EndpointHTMX   = "/htmx"
 )
 
 // URL parameter names
