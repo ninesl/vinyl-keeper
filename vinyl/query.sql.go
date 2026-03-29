@@ -70,7 +70,7 @@ func (q *Queries) GetAllVinyls(ctx context.Context) ([]VinylUnique, error) {
 }
 
 const getUserVinylPlays = `-- name: GetUserVinylPlays :many
-SELECT user_id, vinyl_id, plays, first_played, last_played FROM user_vinyl_plays WHERE user_id = ?
+SELECT user_id, vinyl_id, plays, first_played, last_played FROM user_vinyl_plays WHERE user_id = ? ORDER BY last_played DESC
 `
 
 func (q *Queries) GetUserVinylPlays(ctx context.Context, userID int64) ([]UserVinylPlay, error) {
@@ -103,12 +103,13 @@ func (q *Queries) GetUserVinylPlays(ctx context.Context, userID int64) ([]UserVi
 }
 
 const playVinylCollection = `-- name: PlayVinylCollection :one
-UPDATE user_vinyl_plays
-SET 
+INSERT INTO user_vinyl_plays (user_id, vinyl_id, plays, first_played, last_played)
+VALUES (?, ?, 1, date('now'), date('now'))
+ON CONFLICT(user_id, vinyl_id)
+DO UPDATE SET
     plays = plays + 1,
+    first_played = COALESCE(first_played, date('now')),
     last_played = date('now')
-WHERE
-    user_id = ? AND vinyl_id = ?
 RETURNING user_id, vinyl_id, plays, first_played, last_played
 `
 

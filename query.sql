@@ -19,12 +19,13 @@ RETURNING *;
 SELECT * FROM vinyl_unique;
 
 -- name: PlayVinylCollection :one
-UPDATE user_vinyl_plays
-SET 
+INSERT INTO user_vinyl_plays (user_id, vinyl_id, plays, first_played, last_played)
+VALUES (?, ?, 1, date('now'), date('now'))
+ON CONFLICT(user_id, vinyl_id)
+DO UPDATE SET
     plays = plays + 1,
+    first_played = COALESCE(first_played, date('now')),
     last_played = date('now')
-WHERE
-    user_id = ? AND vinyl_id = ?
 RETURNING *;
 
 -- name: RecordVinylCollection :one
@@ -38,7 +39,7 @@ DO UPDATE SET
 RETURNING *;
 
 -- name: GetUserVinylPlays :many
-SELECT * FROM user_vinyl_plays WHERE user_id = ?;
+SELECT * FROM user_vinyl_plays WHERE user_id = ? ORDER BY last_played DESC;
 
 -- name: DeleteVinyl :exec
 DELETE FROM vinyl_unique WHERE vinyl_id = ?;
