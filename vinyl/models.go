@@ -31,3 +31,10 @@ type VinylUnique struct {
 	CoverRawBlob      []byte  `db:"cover_raw_blob"`
 	CoverEmbedding    []byte  `db:"cover_embedding"`
 }
+
+type VinylWithPlayData struct {
+	VinylUnique
+	Plays       int64
+	FirstPlayed *string
+	LastPlayed  *string
+}
