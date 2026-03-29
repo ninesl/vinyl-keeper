@@ -114,6 +114,20 @@ h1 {
   color: #00ff00;
 }
 
+.play-count {
+  font-size: 12px;
+  color: #ffaa00;
+  margin-top: 8px;
+  font-weight: bold;
+}
+
+.date-added,
+.last-played {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+}
+
 .match-confidence {
   font-size: 12px;
   color: #00ff00;
@@ -163,11 +177,124 @@ h1 {
   margin-top: 10px;
 }
 
+.success {
+  color: #00ff00;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
 .loading {
   color: #ffaa00;
 }
 
+/* Low confidence match card */
+.low-confidence-card {
+  max-width: 500px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.confidence-warning {
+  background: #2a2a2a;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 2px solid #ffaa00;
+}
+
+.confidence-warning h3 {
+  color: #ffaa00;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+.confidence-warning p {
+  color: #aaa;
+  font-size: 14px;
+}
+
+.choice-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn-primary {
+  background: #00ff00;
+  color: #000;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #00dd00;
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: #444;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: #555;
+  transform: translateY(-2px);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  background: #666;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Scanner specific */
+#camera-controls {
+  text-align: center;
+  max-width: 500px;
+  margin: 0 auto 40px;
+}
+
+#enable-camera-btn {
+  display: block;
+  margin: 0 auto 12px;
+  padding: 16px 48px;
+  font-size: 18px;
+  font-weight: bold;
+  background: #00ff00;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+#enable-camera-btn:hover:not(:disabled) {
+  background: #00dd00;
+}
+
+#enable-camera-btn:disabled {
+  background: #666;
+  cursor: not-allowed;
+}
+
+.camera-help {
+  color: #888;
+  font-size: 14px;
+}
+
 #video-container {
   position: relative;
   width: 100%;

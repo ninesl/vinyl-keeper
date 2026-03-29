@@ -16,9 +16,13 @@ import (
 // Embedding is a float64 slice
 type Embedding []float64
 
+const ConfidenceThreshold = 0.80 // 80%
+
 type ScanHandlerParams struct {
 	GetEmbedding           func([]byte) (Embedding, error)
 	FindClosestVinylUnqiue func(Embedding) vinyl.VinylUnique
+	GetVinyl               func(vinylID int64) *vinyl.VinylUnique
+	PlayRecord             func(vinylID int64) error
 }
 
 type ScanResult struct {
@@ -40,6 +44,13 @@ func AlbumsPageHandler(getAllVinyls func() []vinyl.VinylUnique) http.HandlerFunc
 	return func(w http.ResponseWriter, r *http.Request) {
 		vinyls := getAllVinyls()
 		pages.AlbumsPage(values.TitleAlbums, vinyls).Render(r.Context(), w)
+	}
+}
+
+func MyVinylPageHandler(getMyVinyl func() []vinyl.VinylWithPlayData) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vinyls := getMyVinyl()
+		pages.MyVinylPage(values.TitleMyVinyl, vinyls).Render(r.Context(), w)
 	}
 }
 
@@ -97,6 +108,40 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 			return
 		}
 
+		if r.URL.Query().Get("confirm") == "1" {
+			vinylIDStr := r.URL.Query().Get(values.ParamVinylID)
+			if vinylIDStr == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`<p class="error">Missing vinyl ID</p>`))
+				return
+			}
+			vinylID, err := strconv.ParseInt(vinylIDStr, 10, 64)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`<p class="error">Invalid vinyl ID</p>`))
+				return
+			}
+			if params.GetVinyl == nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`<p class="error">Scanner confirmation is not configured</p>`))
+				return
+			}
+			v := params.GetVinyl(vinylID)
+			if v == nil {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte(`<p class="error">Vinyl not found</p>`))
+				return
+			}
+			similarityPercent := 100.0
+			if simStr := r.URL.Query().Get("similarity"); simStr != "" {
+				if parsed, parseErr := strconv.ParseFloat(simStr, 64); parseErr == nil {
+					similarityPercent = parsed
+				}
+			}
+			renderAcceptedScanResult(w, r, params, *v, similarityPercent)
+			return
+		}
+
 		// Read image bytes
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -136,8 +181,25 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 		// Calculate similarity
 		sim := cosineSimilarity(embedding, vinylEmbedding)
 
-		pages.ScanResultCard(vinylResult, sim*100).Render(r.Context(), w)
+		// If confidence is below threshold, show choice card
+		if sim < ConfidenceThreshold {
+			pages.LowConfidenceChoiceCard(vinylResult, sim*100).Render(r.Context(), w)
+			return
+		}
+
+		renderAcceptedScanResult(w, r, params, vinylResult, sim*100)
 	}
+}
+
+func renderAcceptedScanResult(w http.ResponseWriter, r *http.Request, params ScanHandlerParams, vinylResult vinyl.VinylUnique, similarityPercent float64) {
+	if params.PlayRecord != nil {
+		if err := params.PlayRecord(vinylResult.VinylID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`<p class="error">Failed to record play: ` + err.Error() + `</p>`))
+			return
+		}
+	}
+	pages.ScanResultCard(vinylResult, similarityPercent).Render(r.Context(), w)
 }
 
 func cosineSimilarity(a, b Embedding) float64 {

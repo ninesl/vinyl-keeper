@@ -57,6 +57,7 @@ func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
 				copy(mainEmb, emb)
 				return keeper.FindClosestVinyl(mainEmb)
 			},
+			PlayRecord: keeper.PlayRecord,
 		}))
 
 	// Search endpoint (HTML response for scanner)
@@ -77,6 +78,8 @@ func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
 				copy(mainEmb, emb)
 				return keeper.FindClosestVinyl(mainEmb)
 			},
+			GetVinyl:   keeper.GetVinyl,
+			PlayRecord: keeper.PlayRecord,
 		}))
 }
 
@@ -109,6 +112,10 @@ func main() {
 	r.Route(http.MethodGet,
 		values.EndpointAlbums,
 		router.AlbumsPageHandler(keeper.AllVinyl))
+
+	r.Route(http.MethodGet,
+		values.EndpointMyVinyl,
+		router.MyVinylPageHandler(keeper.MyVinyl))
 
 	r.Route(http.MethodGet,
 		values.EndpointRegister,
