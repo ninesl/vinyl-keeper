@@ -4,6 +4,7 @@ const (
 	EndpointHealth   = "/health"
 	EndpointScanner  = "/scanner"
 	EndpointAlbums   = "/albums"
+	EndpointMyVinyl  = "/myvinyl"
 	EndpointSearch   = "/search"
 	EndpointCover    = "/cover"
 	EndpointDelete   = "/delete"
@@ -36,6 +37,7 @@ const (
 const (
 	TitleScanner  = "Vinyl Scanner"
 	TitleAlbums   = "Album Collection"
+	TitleMyVinyl  = "My Vinyl"
 	TitleRegister = "Register Vinyl"
 )
 
