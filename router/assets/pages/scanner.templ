@@ -160,7 +160,7 @@ templ ScannerPage(title string) {
       try {
         const blob = await captureFrame();
         
-        const response = await fetch('/search/html', {
+        const response = await fetch('/search/htmx', {
           method: 'POST',
           headers: {
             'Content-Type': 'image/jpeg',
@@ -174,6 +174,9 @@ templ ScannerPage(title string) {
         
         const html = await response.text();
         resultDiv.innerHTML = html;
+        if (window.htmx) {
+          window.htmx.process(resultDiv);
+        }
       } catch (err) {
         console.error('Scan error:', err);
         resultDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
