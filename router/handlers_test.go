@@ -1,0 +1,251 @@
+package router
+
+import (
+	"bytes"
+	"math"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/ninesl/vinyl-keeper/vinyl"
+)
+
+func TestScanCoverHTMLHandler_HighConfidence(t *testing.T) {
+	// Load test image
+	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		t.Fatalf("Failed to read test image: %v", err)
+	}
+
+	// Mock embedding that will return high similarity
+	testEmbedding := make(Embedding, 512)
+	for i := range testEmbedding {
+		testEmbedding[i] = 1.0 // Will give high cosine similarity
+	}
+
+	// Mock vinyl with matching embedding
+	mockVinyl := vinyl.VinylUnique{
+		VinylID:           1,
+		VinylTitle:        "Test Album",
+		VinylArtist:       "Test Artist",
+		VinylPressingYear: 2020,
+		ImageExtension:    "jpg",
+		CoverEmbedding:    embeddingToBlob(testEmbedding),
+		CoverRawBlob:      imageData,
+	}
+
+	params := ScanHandlerParams{
+		GetEmbedding: func(img []byte) (Embedding, error) {
+			return testEmbedding, nil
+		},
+		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
+			return mockVinyl
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(imageData))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body := w.Body.String()
+
+	// High confidence should render ScanResultCard, not LowConfidenceChoiceCard
+	if strings.Contains(body, "Low Match Confidence") {
+		t.Error("High confidence match should not show low confidence card")
+	}
+
+	if !strings.Contains(body, "Test Album") {
+		t.Error("Response should contain vinyl title")
+	}
+
+	if !strings.Contains(body, "Match:") {
+		t.Error("Response should contain match confidence")
+	}
+}
+
+func TestScanCoverHTMLHandler_LowConfidence(t *testing.T) {
+	// Load test image
+	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		t.Fatalf("Failed to read test image: %v", err)
+	}
+
+	// Mock embedding for scanned image
+	scannedEmbedding := make(Embedding, 512)
+	for i := range scannedEmbedding {
+		scannedEmbedding[i] = 1.0
+	}
+
+	// Mock vinyl with different embedding (low similarity)
+	storedEmbedding := make(Embedding, 512)
+	for i := range storedEmbedding {
+		if i < 256 {
+			storedEmbedding[i] = 1.0
+		} else {
+			storedEmbedding[i] = -1.0 // Opposite values for low similarity
+		}
+	}
+
+	mockVinyl := vinyl.VinylUnique{
+		VinylID:           1,
+		VinylTitle:        "Different Album",
+		VinylArtist:       "Different Artist",
+		VinylPressingYear: 2020,
+		ImageExtension:    "jpg",
+		CoverEmbedding:    embeddingToBlob(storedEmbedding),
+		CoverRawBlob:      imageData,
+	}
+
+	params := ScanHandlerParams{
+		GetEmbedding: func(img []byte) (Embedding, error) {
+			return scannedEmbedding, nil
+		},
+		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
+			return mockVinyl
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(imageData))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body := w.Body.String()
+
+	// Low confidence should show LowConfidenceChoiceCard
+	if !strings.Contains(body, "Low Match Confidence") {
+		t.Error("Low confidence match should show low confidence card")
+	}
+
+	if !strings.Contains(body, "Different Album") {
+		t.Error("Response should contain matched vinyl title")
+	}
+
+	// Should show both choice buttons
+	if !strings.Contains(body, "Yes, this is correct") {
+		t.Error("Response should contain accept button")
+	}
+
+	if !strings.Contains(body, "No, register as new vinyl") {
+		t.Error("Response should contain register button")
+	}
+
+	if !strings.Contains(body, "confirm=1") || !strings.Contains(body, "vinyl_id=1") {
+		t.Error("Response should post confirmation back to scan endpoint")
+	}
+}
+
+func TestScanCoverHTMLHandler_InvalidImage(t *testing.T) {
+	params := ScanHandlerParams{
+		GetEmbedding: func(img []byte) (Embedding, error) {
+			return nil, nil
+		},
+		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
+			return vinyl.VinylUnique{}
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+
+	// Send invalid image data (not a JPEG)
+	invalidData := []byte("not a jpeg")
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(invalidData))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body := w.Body.String()
+
+	if !strings.Contains(body, "Invalid image format") {
+		t.Error("Should return invalid image format error")
+	}
+}
+
+func TestScanCoverHTMLHandler_NoVinylFound(t *testing.T) {
+	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		t.Fatalf("Failed to read test image: %v", err)
+	}
+
+	testEmbedding := make(Embedding, 512)
+
+	params := ScanHandlerParams{
+		GetEmbedding: func(img []byte) (Embedding, error) {
+			return testEmbedding, nil
+		},
+		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
+			// Return zero-value vinyl (VinylID = 0)
+			return vinyl.VinylUnique{}
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(imageData))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+
+	body := w.Body.String()
+
+	if !strings.Contains(body, "No matching vinyl found") {
+		t.Error("Should return no matching vinyl error")
+	}
+}
+
+// Helper function to convert Embedding to blob for tests
+func embeddingToBlob(emb Embedding) []byte {
+	blob := make([]byte, len(emb)*8)
+	for i, val := range emb {
+		bits := floatToBits(val)
+		blob[i*8] = byte(bits)
+		blob[i*8+1] = byte(bits >> 8)
+		blob[i*8+2] = byte(bits >> 16)
+		blob[i*8+3] = byte(bits >> 24)
+		blob[i*8+4] = byte(bits >> 32)
+		blob[i*8+5] = byte(bits >> 40)
+		blob[i*8+6] = byte(bits >> 48)
+		blob[i*8+7] = byte(bits >> 56)
+	}
+	return blob
+}
+
+func floatToBits(f float64) uint64 {
+	// Use math package to properly convert float64 to bits
+	return math.Float64bits(f)
+}
