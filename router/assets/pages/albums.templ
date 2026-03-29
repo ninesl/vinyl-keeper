@@ -93,3 +93,45 @@ templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
 		</div>
 	</div>
 }
+
+templ LowConfidenceChoiceCard(v vinyl.VinylUnique, similarity float64) {
+	<div class="low-confidence-card">
+		<div class="confidence-warning">
+			<h3>Low Match Confidence: { fmt.Sprintf("%.1f", similarity) }%</h3>
+			<p>We found a possible match, but we're not very confident. Is this correct?</p>
+		</div>
+		<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
+			<img
+				class="album-cover"
+				src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+				alt={ v.VinylTitle + " by " + v.VinylArtist }
+			/>
+			<div class="album-info">
+				<div class="album-title">{ v.VinylTitle }</div>
+				<div class="album-artist">{ v.VinylArtist }</div>
+				<div class="album-year-genre">
+					{ fmt.Sprintf("%d", v.VinylPressingYear) }
+					if v.Genres != nil {
+						- { *v.Genres }
+					}
+				</div>
+				if v.Styles != nil {
+					<div class="album-styles">{ *v.Styles }</div>
+				}
+			</div>
+		</div>
+		<div class="choice-buttons">
+			<button
+				class="btn-primary"
+				hx-post={ fmt.Sprintf("/search/htmx?confirm=1&vinyl_id=%d&similarity=%.1f", v.VinylID, similarity) }
+				hx-target="#result"
+				hx-swap="innerHTML"
+			>
+				Yes, this is correct
+			</button>
+			<a href="/register" class="btn-secondary">
+				No, register as new vinyl
+			</a>
+		</div>
+	</div>
+}
