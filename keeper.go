@@ -34,7 +34,8 @@ type Keeper interface {
 	PlayRecord(vinylID int64) error // ++ to the numPlays of the vinylID, saves the record if not already logged
 	NumPlays(vinylID int64) int     // Number of plays this vinylID has had in this Keeper
 	AllVinyl() []vinyl.VinylUnique
-	DeleteVinyl(vinylID int64) error // removes vinyl from DB and in-memory caches
+	MyVinyl() []vinyl.VinylWithPlayData // returns all vinyl user has played, ordered by last_played DESC
+	DeleteVinyl(vinylID int64) error    // removes vinyl from DB and in-memory caches
 }
 
 type keeper struct {
@@ -61,6 +62,32 @@ func (k *keeper) AllVinyl() []vinyl.VinylUnique {
 	}
 
 	return v
+}
+
+func (k *keeper) MyVinyl() []vinyl.VinylWithPlayData {
+	userPlays, err := k.queries.GetUserVinylPlays(k.ctx, k.userID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+
+	result := make([]vinyl.VinylWithPlayData, 0, len(userPlays))
+	for _, play := range userPlays {
+		vinylUnique, ok := k.vinylLookup[play.VinylID]
+		if !ok {
+			log.Fatalf("data consistency error: vinyl_id %d found in user_vinyl_plays but not in vinylLookup", play.VinylID)
+		}
+		result = append(result, vinyl.VinylWithPlayData{
+			VinylUnique: vinylUnique,
+			Plays:       play.Plays,
+			FirstPlayed: play.FirstPlayed,
+			LastPlayed:  play.LastPlayed,
+		})
+	}
+
+	return result
 }
 
 func (k *keeper) RegisterVinylUnique(args vinyl.RegisterVinylParams) (vinyl.VinylUnique, error) {
@@ -309,12 +336,15 @@ func (k *keeper) PlayRecord(vinylID int64) error {
 	if !k.checkIfExists(vinylID) {
 		return fmt.Errorf("%d does not exist in keeper as a UniqueVinyl", vinylID)
 	}
-	k.queries.PlayVinylCollection(k.ctx, vinyl.PlayVinylCollectionParams{
+	play, err := k.queries.PlayVinylCollection(k.ctx, vinyl.PlayVinylCollectionParams{
 		VinylID: vinylID, UserID: k.userID,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to record play for vinyl %d: %w", vinylID, err)
+	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	k.numPlays[vinylID] = k.numPlays[vinylID] + 1
+	k.numPlays[vinylID] = int(play.Plays)
 	return nil
 }
 
