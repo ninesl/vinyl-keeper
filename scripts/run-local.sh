@@ -1,9 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
+# Native local runner (non-container fallback):
+# 1) starts Python image-service
+# 2) waits for /health
+# 3) runs `go run` for the app module
+
 host="${IMAGE_SERVICE_HOST:-127.0.0.1}"
-port="${IMAGE_SERVICE_PORT:-8000}"
-health_url="${IMAGE_SERVICE_HEALTH_URL:-http://${host}:${port}/health}"
+port="${IMAGE_SERVICE_PORT:-8081}"
+health_endpoint="${IMAGE_SERVICE_HEALTH_ENDPOINT:-/health}"
+health_url="${IMAGE_SERVICE_HEALTH_URL:-http://${host}:${port}${health_endpoint}}"
 
 retries="${IMAGE_SERVICE_WAIT_RETRIES:-60}"
 sleep_seconds="${IMAGE_SERVICE_WAIT_SECONDS:-1}"
@@ -32,4 +38,4 @@ if ! curl -fsS "$health_url" >/dev/null 2>&1; then
   exit 1
 fi
 
-go run .
+go -C app run .
