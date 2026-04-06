@@ -2,29 +2,19 @@ package pages
 
 import (
 	"fmt"
+	"github.com/ninesl/vinyl-keeper/internal/values"
 	"github.com/ninesl/vinyl-keeper/router/assets/ui"
 	"github.com/ninesl/vinyl-keeper/vinyl"
 )
 
-templ MyVinylPage(title string, vinyls []vinyl.VinylWithPlayData) {
+templ MyVinylPage(title string, index *vinyl.VinylIndex) {
 	@ui.Layout(title) {
 		<header>
 			<h1>My Vinyl</h1>
-			<div class="stats">{ fmt.Sprintf("%d", len(vinyls)) } played</div>
 		</header>
 		@ui.Nav()
-		if len(vinyls) > 0 {
-			<div class="albums-grid">
-				for _, v := range vinyls {
-					@MyVinylCard(v)
-				}
-			</div>
-		} else {
-			<div class="empty-state">
-				<h2>No Vinyl Played Yet</h2>
-				<p>Start by <a href="/scanner">scanning and playing your vinyl</a></p>
-			</div>
-		}
+		@ui.FilterControls(values.EndpointMyVinyl+values.EndpointFilter, index)
+		<div id={ values.IDAlbumZone } hx-get={ values.EndpointMyVinyl + values.EndpointFilter } hx-trigger="load"></div>
 	}
 }
 
@@ -32,7 +22,7 @@ templ MyVinylCard(v vinyl.VinylWithPlayData) {
 	<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
 		<img
 			class="album-cover"
-			src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+			src={ fmt.Sprintf(values.EndpointCover+"/%d", v.VinylID) }
 			alt={ v.VinylTitle + " by " + v.VinylArtist }
 		/>
 		<div class="album-info">

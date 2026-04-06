@@ -30,6 +30,39 @@ func (q *Queries) DeleteVinyl(ctx context.Context, vinylID int64) error {
 	return err
 }
 
+const getAllUserVinylPlays = `-- name: GetAllUserVinylPlays :many
+SELECT user_id, vinyl_id, plays, first_played, last_played FROM user_vinyl_plays
+`
+
+func (q *Queries) GetAllUserVinylPlays(ctx context.Context) ([]UserVinylPlay, error) {
+	rows, err := q.query(ctx, q.getAllUserVinylPlaysStmt, getAllUserVinylPlays)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserVinylPlay{}
+	for rows.Next() {
+		var i UserVinylPlay
+		if err := rows.Scan(
+			&i.UserID,
+			&i.VinylID,
+			&i.Plays,
+			&i.FirstPlayed,
+			&i.LastPlayed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllVinyls = `-- name: GetAllVinyls :many
 SELECT vinyl_id, vinyl_title, vinyl_artist, vinyl_pressing_year, first_pressing, discogs_master_id, styles, genres, image_extension, cover_raw_blob, cover_embedding FROM vinyl_unique
 `

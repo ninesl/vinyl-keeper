@@ -10,6 +10,7 @@ import (
 
 	"github.com/ninesl/vinyl-keeper/internal/values"
 	"github.com/ninesl/vinyl-keeper/router/assets/pages"
+	"github.com/ninesl/vinyl-keeper/router/assets/ui"
 	"github.com/ninesl/vinyl-keeper/vinyl"
 )
 
@@ -18,11 +19,23 @@ type Embedding []float64
 
 const ConfidenceThreshold = 0.80 // 80%
 
+// parseFilterCriteria extracts filter criteria from query parameters
+func parseFilterCriteria(r *http.Request) vinyl.FilterCriteria {
+	query := r.URL.Query()
+
+	return vinyl.FilterCriteria{
+		Artist: query.Get(values.QueryArtist),
+		Genres: query[values.QueryGenre], // supports multiple values
+		Styles: query[values.QueryStyle], // supports multiple values
+	}
+}
+
 type ScanHandlerParams struct {
 	GetEmbedding           func([]byte) (Embedding, error)
 	FindClosestVinylUnqiue func(Embedding) vinyl.VinylUnique
 	GetVinyl               func(vinylID int64) *vinyl.VinylUnique
-	PlayRecord             func(vinylID int64) error
+	PlayRecord             func(vinylID, userID int64) error
+	GetUserID              func(*http.Request) int64
 }
 
 type ScanResult struct {
@@ -40,17 +53,54 @@ func ScannerPageHandler(w http.ResponseWriter, r *http.Request) {
 	pages.ScannerPage(values.TitleScanner).Render(r.Context(), w)
 }
 
-func AlbumsPageHandler(getAllVinyls func() []vinyl.VinylUnique) http.HandlerFunc {
+func AlbumsPageHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vinyls := getAllVinyls()
-		pages.AlbumsPage(values.TitleAlbums, vinyls).Render(r.Context(), w)
+		index := getIndex()
+		pages.AlbumsPage(values.TitleAlbums, index).Render(r.Context(), w)
 	}
 }
 
-func MyVinylPageHandler(getMyVinyl func() []vinyl.VinylWithPlayData) http.HandlerFunc {
+func MyVinylPageHandler(
+	getIndex func() *vinyl.VinylIndex,
+	getUserID func(*http.Request) int64,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vinyls := getMyVinyl()
-		pages.MyVinylPage(values.TitleMyVinyl, vinyls).Render(r.Context(), w)
+		index := getIndex()
+		pages.MyVinylPage(values.TitleMyVinyl, index).Render(r.Context(), w)
+	}
+}
+
+func AlbumsFilterHandler(
+	getAllVinyls func() []vinyl.VinylUnique,
+	getIndex func() *vinyl.VinylIndex,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		criteria := parseFilterCriteria(r)
+		vinyls := getAllVinyls()
+		index := getIndex()
+
+		filtered := vinyl.FilterVinylUnique(vinyls, criteria, index)
+		ui.AlbumsGrid(filtered).Render(r.Context(), w)
+	}
+}
+
+func MyVinylFilterHandler(
+	getMyVinyl func(userID int64) []vinyl.VinylWithPlayData,
+	getIndex func() *vinyl.VinylIndex,
+	getUserID func(*http.Request) int64,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		criteria := parseFilterCriteria(r)
+		userID := getUserID(r)
+		vinyls := getMyVinyl(userID)
+		index := getIndex()
+
+		filtered := vinyl.FilterVinylWithPlayData(vinyls, criteria, index)
+		ui.MyVinylGrid(filtered).Render(r.Context(), w)
 	}
 }
 
@@ -108,8 +158,8 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 			return
 		}
 
-		if r.URL.Query().Get("confirm") == "1" {
-			vinylIDStr := r.URL.Query().Get(values.ParamVinylID)
+		if r.FormValue(values.QueryConfirm) == "1" {
+			vinylIDStr := r.FormValue(values.ParamVinylID)
 			if vinylIDStr == "" {
 				w.WriteHeader(http.StatusBadRequest)
 				w.Write([]byte(`<p class="error">Missing vinyl ID</p>`))
@@ -133,7 +183,7 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 				return
 			}
 			similarityPercent := 100.0
-			if simStr := r.URL.Query().Get("similarity"); simStr != "" {
+			if simStr := r.FormValue(values.QuerySimilarity); simStr != "" {
 				if parsed, parseErr := strconv.ParseFloat(simStr, 64); parseErr == nil {
 					similarityPercent = parsed
 				}
@@ -193,7 +243,8 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 
 func renderAcceptedScanResult(w http.ResponseWriter, r *http.Request, params ScanHandlerParams, vinylResult vinyl.VinylUnique, similarityPercent float64) {
 	if params.PlayRecord != nil {
-		if err := params.PlayRecord(vinylResult.VinylID); err != nil {
+		userID := params.GetUserID(r)
+		if err := params.PlayRecord(vinylResult.VinylID, userID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(`<p class="error">Failed to record play: ` + err.Error() + `</p>`))
 			return

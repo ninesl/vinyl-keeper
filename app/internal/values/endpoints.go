@@ -14,6 +14,7 @@ const (
 	EndpointSubmit = "/submit"
 	EndpointStatic = "/static"
 	EndpointHTMX   = "/htmx"
+	EndpointFilter = "/filter"
 )
 
 // URL parameter names
@@ -23,8 +24,12 @@ const (
 
 // Query parameter keys
 const (
-	QueryArtist = "artist"
-	QueryAlbum  = "album"
+	QueryArtist     = "artist"
+	QueryAlbum      = "album"
+	QueryGenre      = "genre"
+	QueryStyle      = "style"
+	QueryConfirm    = "confirm"
+	QuerySimilarity = "similarity"
 )
 
 // Content types
@@ -39,6 +44,14 @@ const (
 	TitleAlbums   = "Album Collection"
 	TitleMyVinyl  = "My Vinyl"
 	TitleRegister = "Register Vinyl"
+)
+
+// DOM element IDs
+const (
+	IDAlbumZone    = "album-zone"
+	IDFilterArtist = "filter-artist"
+	IDResult       = "result"
+	IDResults      = "results"
 )
 
 // PageParam wraps a parameter name in braces for path patterns

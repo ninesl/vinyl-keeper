@@ -1,6 +1,9 @@
 package pages
 
-import "github.com/ninesl/vinyl-keeper/router/assets/ui"
+import (
+	"github.com/ninesl/vinyl-keeper/internal/values"
+	"github.com/ninesl/vinyl-keeper/router/assets/ui"
+)
 
 templ ScannerPage(title string) {
 	@ui.Layout(title) {
@@ -16,13 +19,14 @@ templ ScannerPage(title string) {
 		</div>
 		<button id="scan-btn" onclick="scanAndSubmit()" style="display: none;">SCAN</button>
 		<canvas id="canvas"></canvas>
-		<div id="result"></div>
+		<div id={ values.IDResult } data-search-endpoint={ values.EndpointSearch + values.EndpointHTMX }></div>
 		<script>
     const video = document.getElementById('camera');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scanBtn = document.getElementById('scan-btn');
-    const resultDiv = document.getElementById('result');
+    const resultDiv = document.querySelector('[data-search-endpoint]');
+    const searchEndpoint = resultDiv.dataset.searchEndpoint;
 
     // Check if camera API is available
     function checkCameraSupport() {
@@ -160,7 +164,7 @@ templ ScannerPage(title string) {
       try {
         const blob = await captureFrame();
         
-        const response = await fetch('/search/htmx', {
+        const response = await fetch(searchEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'image/jpeg',

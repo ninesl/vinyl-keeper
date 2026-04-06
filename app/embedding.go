@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/ninesl/vinyl-keeper/router"
 )
@@ -109,4 +111,60 @@ func loadImageEmbedParams(imgData []byte) (router.ImageEmbedParams, error) {
 		Port:     port,
 		Endpoint: endpoint,
 	}, nil
+}
+
+func waitForImageServiceHealth() error {
+	host := os.Getenv("IMAGE_SERVICE_HOST")
+	if host == "" {
+		return fmt.Errorf("IMAGE_SERVICE_HOST is not set")
+	}
+
+	portRaw := os.Getenv("IMAGE_SERVICE_PORT")
+	if portRaw == "" {
+		return fmt.Errorf("IMAGE_SERVICE_PORT is not set")
+	}
+
+	port, err := strconv.Atoi(portRaw)
+	if err != nil {
+		return fmt.Errorf("invalid IMAGE_SERVICE_PORT: %w", err)
+	}
+
+	healthEndpoint := os.Getenv("IMAGE_SERVICE_HEALTH_ENDPOINT")
+	if healthEndpoint == "" {
+		healthEndpoint = "/health"
+	}
+
+	retries := 60
+	if raw := os.Getenv("IMAGE_SERVICE_WAIT_RETRIES"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			return fmt.Errorf("invalid IMAGE_SERVICE_WAIT_RETRIES: %q", raw)
+		}
+		retries = parsed
+	}
+
+	waitSeconds := 1
+	if raw := os.Getenv("IMAGE_SERVICE_WAIT_SECONDS"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			return fmt.Errorf("invalid IMAGE_SERVICE_WAIT_SECONDS: %q", raw)
+		}
+		waitSeconds = parsed
+	}
+
+	url := fmt.Sprintf("http://%s:%d%s", host, port, healthEndpoint)
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	for i := 0; i < retries; i++ {
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(time.Duration(waitSeconds) * time.Second)
+	}
+
+	return fmt.Errorf("image service did not become healthy at %s after %d attempts", url, retries)
 }

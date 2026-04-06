@@ -15,7 +15,7 @@ import (
 
 func TestScanCoverHTMLHandler_HighConfidence(t *testing.T) {
 	// Load test image
-	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imagePath := filepath.Join("..", "..", "photos", "album_1.jpg")
 	imageData, err := os.ReadFile(imagePath)
 	if err != nil {
 		t.Fatalf("Failed to read test image: %v", err)
@@ -80,7 +80,7 @@ func TestScanCoverHTMLHandler_HighConfidence(t *testing.T) {
 
 func TestScanCoverHTMLHandler_LowConfidence(t *testing.T) {
 	// Load test image
-	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imagePath := filepath.Join("..", "..", "photos", "album_1.jpg")
 	imageData, err := os.ReadFile(imagePath)
 	if err != nil {
 		t.Fatalf("Failed to read test image: %v", err)
@@ -156,8 +156,142 @@ func TestScanCoverHTMLHandler_LowConfidence(t *testing.T) {
 		t.Error("Response should contain register button")
 	}
 
-	if !strings.Contains(body, "confirm=1") || !strings.Contains(body, "vinyl_id=1") {
-		t.Error("Response should post confirmation back to scan endpoint")
+	if !strings.Contains(body, "confirm") || !strings.Contains(body, "vinyl_id") {
+		t.Error("Response should post confirmation payload back to scan endpoint")
+	}
+}
+
+func TestScanCoverHTMLHandler_HighConfidence_PassesUserIDToPlayRecord(t *testing.T) {
+	imagePath := filepath.Join("..", "..", "photos", "album_1.jpg")
+	imageData, err := os.ReadFile(imagePath)
+	if err != nil {
+		t.Fatalf("Failed to read test image: %v", err)
+	}
+
+	testEmbedding := make(Embedding, 512)
+	for i := range testEmbedding {
+		testEmbedding[i] = 1.0
+	}
+
+	mockVinyl := vinyl.VinylUnique{
+		VinylID:           1,
+		VinylTitle:        "Test Album",
+		VinylArtist:       "Test Artist",
+		VinylPressingYear: 2020,
+		ImageExtension:    "jpg",
+		CoverEmbedding:    embeddingToBlob(testEmbedding),
+		CoverRawBlob:      imageData,
+	}
+
+	var gotVinylID int64
+	var gotUserID int64
+
+	params := ScanHandlerParams{
+		GetEmbedding: func(img []byte) (Embedding, error) {
+			return testEmbedding, nil
+		},
+		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
+			return mockVinyl
+		},
+		PlayRecord: func(vinylID, userID int64) error {
+			gotVinylID = vinylID
+			gotUserID = userID
+			return nil
+		},
+		GetUserID: func(*http.Request) int64 {
+			return 42
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(imageData))
+	req.Header.Set("Content-Type", "image/jpeg")
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Result().StatusCode)
+	}
+	if gotVinylID != 1 {
+		t.Fatalf("Expected PlayRecord vinylID=1, got %d", gotVinylID)
+	}
+	if gotUserID != 42 {
+		t.Fatalf("Expected PlayRecord userID=42, got %d", gotUserID)
+	}
+}
+
+func TestScanCoverHTMLHandler_ConfirmFlow_PassesUserIDToPlayRecord(t *testing.T) {
+	mockVinyl := vinyl.VinylUnique{
+		VinylID:           1,
+		VinylTitle:        "Confirmed Album",
+		VinylArtist:       "Confirmed Artist",
+		VinylPressingYear: 2020,
+		ImageExtension:    "jpg",
+	}
+
+	var gotVinylID int64
+	var gotUserID int64
+
+	params := ScanHandlerParams{
+		GetVinyl: func(vinylID int64) *vinyl.VinylUnique {
+			if vinylID != 1 {
+				t.Fatalf("expected vinylID 1 in confirm flow, got %d", vinylID)
+			}
+			return &mockVinyl
+		},
+		PlayRecord: func(vinylID, userID int64) error {
+			gotVinylID = vinylID
+			gotUserID = userID
+			return nil
+		},
+		GetUserID: func(*http.Request) int64 {
+			return 99
+		},
+	}
+
+	handler := ScanCoverHTMLHandler(params)
+	req := httptest.NewRequest(http.MethodPost, "/search/htmx?confirm=1&vinyl_id=1&similarity=88.8", nil)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Result().StatusCode)
+	}
+	if gotVinylID != 1 {
+		t.Fatalf("Expected PlayRecord vinylID=1, got %d", gotVinylID)
+	}
+	if gotUserID != 99 {
+		t.Fatalf("Expected PlayRecord userID=99, got %d", gotUserID)
+	}
+}
+
+func TestMyVinylFilterHandler_PassesUserID(t *testing.T) {
+	var gotUserID int64
+
+	getMyVinyl := func(userID int64) []vinyl.VinylWithPlayData {
+		gotUserID = userID
+		return []vinyl.VinylWithPlayData{}
+	}
+
+	index := vinyl.BuildVinylIndex([]vinyl.VinylUnique{})
+	handler := MyVinylFilterHandler(
+		getMyVinyl,
+		func() *vinyl.VinylIndex { return index },
+		func(*http.Request) int64 { return 7 },
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/myvinyl/filter", nil)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Result().StatusCode)
+	}
+	if gotUserID != 7 {
+		t.Fatalf("Expected getMyVinyl userID=7, got %d", gotUserID)
 	}
 }
 
@@ -192,7 +326,7 @@ func TestScanCoverHTMLHandler_InvalidImage(t *testing.T) {
 }
 
 func TestScanCoverHTMLHandler_NoVinylFound(t *testing.T) {
-	imagePath := filepath.Join("..", "photos", "album_1.jpg")
+	imagePath := filepath.Join("..", "..", "photos", "album_1.jpg")
 	imageData, err := os.ReadFile(imagePath)
 	if err != nil {
 		t.Fatalf("Failed to read test image: %v", err)

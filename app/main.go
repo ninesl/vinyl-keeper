@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	// Embed Mozilla's root CA certificates directly into the binary.
 	//
@@ -36,7 +37,7 @@ import (
 //go:embed router/assets/static
 var staticFS embed.FS
 
-func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
+func setEmbeddingRoutes(r *router.Router, keeper *keeper, getUserID func(*http.Request) int64) {
 	// Search endpoint (JSON response)
 	r.Route(http.MethodPost,
 		values.EndpointSearch,
@@ -58,6 +59,7 @@ func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
 				return keeper.FindClosestVinyl(mainEmb)
 			},
 			PlayRecord: keeper.PlayRecord,
+			GetUserID:  getUserID,
 		}))
 
 	// Search endpoint (HTML response for scanner)
@@ -80,6 +82,7 @@ func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
 			},
 			GetVinyl:   keeper.GetVinyl,
 			PlayRecord: keeper.PlayRecord,
+			GetUserID:  getUserID,
 		}))
 }
 
@@ -90,6 +93,11 @@ func main() {
 	}
 
 	keeper := k.(*keeper)
+
+	// getUserID returns the hardcoded user ID (0 for now, no auth)
+	getUserID := func(r *http.Request) int64 {
+		return 0
+	}
 
 	r := router.NewRouter()
 
@@ -111,17 +119,25 @@ func main() {
 
 	r.Route(http.MethodGet,
 		values.EndpointAlbums,
-		router.AlbumsPageHandler(keeper.AllVinyl))
+		router.AlbumsPageHandler(keeper.GetVinylIndex))
+
+	r.Route(http.MethodGet,
+		values.EndpointAlbums+values.EndpointFilter,
+		router.AlbumsFilterHandler(keeper.AllVinyl, keeper.GetVinylIndex))
 
 	r.Route(http.MethodGet,
 		values.EndpointMyVinyl,
-		router.MyVinylPageHandler(keeper.MyVinyl))
+		router.MyVinylPageHandler(keeper.GetVinylIndex, getUserID))
+
+	r.Route(http.MethodGet,
+		values.EndpointMyVinyl+values.EndpointFilter,
+		router.MyVinylFilterHandler(keeper.MyVinyl, keeper.GetVinylIndex, getUserID))
 
 	r.Route(http.MethodGet,
 		values.EndpointRegister,
 		router.RegisterPageHandler)
 
-	setEmbeddingRoutes(r, keeper)
+	setEmbeddingRoutes(r, keeper, getUserID)
 
 	// Register submit (HTMX endpoint)
 	r.Route(http.MethodGet,
@@ -155,19 +171,39 @@ func main() {
 		log.Fatalf("failed to setup router: %v", err)
 	}
 
-	// TLS is REQUIRED - camera access on mobile browsers requires HTTPS
-	certFile := os.Getenv("TLS_CERT")
-	keyFile := os.Getenv("TLS_KEY")
-
-	if certFile == "" || keyFile == "" {
-		log.Fatal("TLS_CERT and TLS_KEY environment variables are required")
+	if err := waitForImageServiceHealth(); err != nil {
+		log.Fatalf("image service health check failed: %v", err)
 	}
 
 	addr := ":8080"
-	fmt.Printf("Server listening on https://0.0.0.0%s\n", addr)
-	fmt.Printf("Using TLS cert: %s\n", certFile)
+	enableTLS := true
+	if raw := os.Getenv("ENABLE_TLS"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			log.Fatalf("invalid ENABLE_TLS value %q: %v", raw, err)
+		}
+		enableTLS = parsed
+	}
 
-	if err := http.ListenAndServeTLS(addr, certFile, keyFile, handler); err != nil {
-		log.Fatalf("server error: %v", err)
+	if enableTLS {
+		certFile := os.Getenv("TLS_CERT")
+		keyFile := os.Getenv("TLS_KEY")
+
+		if certFile == "" || keyFile == "" {
+			log.Fatal("TLS is enabled but TLS_CERT and TLS_KEY are not set")
+		}
+
+		fmt.Printf("Server listening on https://0.0.0.0%s\n", addr)
+		fmt.Printf("Using TLS cert: %s\n", certFile)
+
+		if err := http.ListenAndServeTLS(addr, certFile, keyFile, handler); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
+	} else {
+		fmt.Printf("Server listening on http://0.0.0.0%s (tls disabled)\n", addr)
+
+		if err := http.ListenAndServe(addr, handler); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
 	}
 }

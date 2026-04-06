@@ -41,5 +41,8 @@ RETURNING *;
 -- name: GetUserVinylPlays :many
 SELECT * FROM user_vinyl_plays WHERE user_id = ? ORDER BY last_played DESC;
 
+-- name: GetAllUserVinylPlays :many
+SELECT * FROM user_vinyl_plays;
+
 -- name: DeleteVinyl :exec
 DELETE FROM vinyl_unique WHERE vinyl_id = ?;

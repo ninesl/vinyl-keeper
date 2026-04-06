@@ -19,9 +19,7 @@ import (
 	"time"
 
 	"github.com/ninesl/vinyl-keeper/vinyl"
-	"modernc.org/sqlite"
 	_ "modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 )
 
 //go:embed schema.sql
@@ -30,23 +28,27 @@ var schemaSQL string
 type Keeper interface {
 	RegisterVinylUnique(args vinyl.RegisterVinylParams) (vinyl.VinylUnique, error) // FIXME: this is not discogs? uncertain schema for this yet
 
-	KeepRecord(vinylID int64) error // makes an entry for the record, returns an error if exists already
-	PlayRecord(vinylID int64) error // ++ to the numPlays of the vinylID, saves the record if not already logged
-	NumPlays(vinylID int64) int     // Number of plays this vinylID has had in this Keeper
+	KeepRecord(vinylID, userID int64) error // makes an entry for the record, returns an error if exists already
+	PlayRecord(vinylID, userID int64) error // ++ to the numPlays of the vinylID, saves the record if not already logged
+	NumPlays(vinylID, userID int64) int     // Number of plays this vinylID has had for this user
 	AllVinyl() []vinyl.VinylUnique
-	MyVinyl() []vinyl.VinylWithPlayData // returns all vinyl user has played, ordered by last_played DESC
-	DeleteVinyl(vinylID int64) error    // removes vinyl from DB and in-memory caches
+	MyVinyl(userID int64) []vinyl.VinylWithPlayData // returns all vinyl user has played, ordered by last_played DESC
+	DeleteVinyl(vinylID int64) error                // removes vinyl from DB and in-memory caches
 }
 
 type keeper struct {
 	ctx             context.Context
-	userID          int64
 	queries         *vinyl.Queries
 	vinylLookup     map[int64]vinyl.VinylUnique
 	embeddingLookup map[int64]Embedding
-	// number of plays each int64 vinylID has had
-	numPlays map[int64]int
-	mu       sync.RWMutex
+	// number of plays per user per vinyl: userID -> (vinylID -> playCount)
+	userNumPlays map[int64]map[int64]int
+
+	// Filter index and cached sorted slices
+	vinylIndex   *vinyl.VinylIndex
+	needsRebuild bool
+
+	mu sync.RWMutex
 }
 
 func NewKeeper() (Keeper, error) {
@@ -64,8 +66,8 @@ func (k *keeper) AllVinyl() []vinyl.VinylUnique {
 	return v
 }
 
-func (k *keeper) MyVinyl() []vinyl.VinylWithPlayData {
-	userPlays, err := k.queries.GetUserVinylPlays(k.ctx, k.userID)
+func (k *keeper) MyVinyl(userID int64) []vinyl.VinylWithPlayData {
+	userPlays, err := k.queries.GetUserVinylPlays(k.ctx, userID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,6 +108,7 @@ func (k *keeper) RegisterVinylUnique(args vinyl.RegisterVinylParams) (vinyl.Viny
 	k.mu.Lock()
 	k.vinylLookup[vinylUnique.VinylID] = vinylUnique
 	k.embeddingLookup[vinylUnique.VinylID] = emb
+	k.needsRebuild = true // Mark index for rebuild
 	k.mu.Unlock()
 
 	return vinylUnique, nil
@@ -320,38 +323,54 @@ func RegisterUniqueVinylQueryParams(albumTitle, artist string) (vinyl.RegisterVi
 
 }
 
-func (k *keeper) KeepRecord(vinylID int64) error {
+func (k *keeper) KeepRecord(vinylID, userID int64) error {
 	if !k.checkIfExists(vinylID) {
 		return fmt.Errorf("%d does not exist in keeper as a UniqueVinyl", vinylID)
 	}
-	k.queries.RecordVinylCollection(k.ctx, vinyl.RecordVinylCollectionParams{
-		UserID:  k.userID,
+	result, err := k.queries.RecordVinylCollection(k.ctx, vinyl.RecordVinylCollectionParams{
+		UserID:  userID,
 		VinylID: vinylID,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to record vinyl %d for user %d: %w", vinylID, userID, err)
+	}
+
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.userNumPlays[userID] == nil {
+		k.userNumPlays[userID] = make(map[int64]int)
+	}
+	k.userNumPlays[userID][vinylID] = int(result.Plays)
 	return nil
 }
 
-// KeepRecord makes an entry given the VinylID to the user's collection
-func (k *keeper) PlayRecord(vinylID int64) error {
+// PlayRecord makes an entry given the VinylID to the user's collection
+func (k *keeper) PlayRecord(vinylID, userID int64) error {
 	if !k.checkIfExists(vinylID) {
 		return fmt.Errorf("%d does not exist in keeper as a UniqueVinyl", vinylID)
 	}
 	play, err := k.queries.PlayVinylCollection(k.ctx, vinyl.PlayVinylCollectionParams{
-		VinylID: vinylID, UserID: k.userID,
+		VinylID: vinylID, UserID: userID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to record play for vinyl %d: %w", vinylID, err)
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	k.numPlays[vinylID] = int(play.Plays)
+	if k.userNumPlays[userID] == nil {
+		k.userNumPlays[userID] = make(map[int64]int)
+	}
+	k.userNumPlays[userID][vinylID] = int(play.Plays)
 	return nil
 }
 
-func (k *keeper) NumPlays(vinylID int64) int {
+func (k *keeper) NumPlays(vinylID, userID int64) int {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	return k.numPlays[vinylID]
+	if k.userNumPlays[userID] == nil {
+		return 0
+	}
+	return k.userNumPlays[userID][vinylID]
 }
 
 func (k *keeper) DeleteVinyl(vinylID int64) error {
@@ -364,7 +383,11 @@ func (k *keeper) DeleteVinyl(vinylID int64) error {
 	k.mu.Lock()
 	delete(k.vinylLookup, vinylID)
 	delete(k.embeddingLookup, vinylID)
-	delete(k.numPlays, vinylID)
+	// Remove from all users' play counts
+	for userID := range k.userNumPlays {
+		delete(k.userNumPlays[userID], vinylID)
+	}
+	k.needsRebuild = true // Mark index for rebuild
 	k.mu.Unlock()
 
 	return nil
@@ -376,10 +399,8 @@ func (k *keeper) initKeeper(ctx context.Context) error {
 	if err := k.initializeQueries(ctx); err != nil {
 		return err
 	}
-	// Ensure default user exists
-	if err := k.ensureDefaultUser(); err != nil {
-		return err
-	}
+
+	// Load all vinyls
 	vinyls, err := k.queries.GetAllVinyls(k.ctx)
 	if err != nil {
 		return err
@@ -395,14 +416,23 @@ func (k *keeper) initKeeper(ctx context.Context) error {
 		}
 		k.embeddingLookup[v.VinylID] = emb
 	}
-	userPlays, err := k.queries.GetUserVinylPlays(k.ctx, k.userID) // userID assumed 0
+
+	// Load ALL user plays from all users
+	allUserPlays, err := k.queries.GetAllUserVinylPlays(k.ctx)
 	if err != nil {
 		return err
 	}
-	k.numPlays = make(map[int64]int)
-	for _, p := range userPlays {
-		k.numPlays[p.VinylID] = int(p.Plays)
+	k.userNumPlays = make(map[int64]map[int64]int)
+	for _, play := range allUserPlays {
+		if k.userNumPlays[play.UserID] == nil {
+			k.userNumPlays[play.UserID] = make(map[int64]int)
+		}
+		k.userNumPlays[play.UserID][play.VinylID] = int(play.Plays)
 	}
+
+	// Build initial vinyl index
+	k.rebuildIndex()
+
 	return nil
 }
 
@@ -466,27 +496,6 @@ func (k *keeper) GetVinyl(vinylID int64) *vinyl.VinylUnique {
 	return &v
 }
 
-// ensureDefaultUser ensures that a user with name "User" exists in the database
-// and sets k.userID to the user's ID
-func (k *keeper) ensureDefaultUser() error {
-	user, err := k.queries.CreateUser(k.ctx, "User")
-	if err != nil {
-		// Check if error is due to UNIQUE constraint (user already exists)
-		if liteErr, ok := err.(*sqlite.Error); ok {
-			code := liteErr.Code()
-			if code == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-				// User already exists, we need to look up their ID
-				// For now, we'll assume userID = 1 since this is the first/only user
-				k.userID = 1
-				return nil
-			}
-		}
-		return fmt.Errorf("create default user: %w", err)
-	}
-	k.userID = user.UserID
-	return nil
-}
-
 func cosineSimilarity(a, b Embedding) float64 {
 	if len(a) != len(b) {
 		return 0
@@ -520,4 +529,33 @@ func (k *keeper) FindClosestVinyl(input Embedding) vinyl.VinylUnique {
 	}
 
 	return k.vinylLookup[bestVinylID]
+}
+
+// GetVinylIndex returns the vinyl index, rebuilding it if necessary
+func (k *keeper) GetVinylIndex() *vinyl.VinylIndex {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	if k.needsRebuild {
+		k.rebuildIndexLocked()
+	}
+
+	return k.vinylIndex
+}
+
+// rebuildIndex rebuilds the vinyl index with proper locking
+func (k *keeper) rebuildIndex() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.rebuildIndexLocked()
+}
+
+// rebuildIndexLocked rebuilds the index (must be called with lock held)
+func (k *keeper) rebuildIndexLocked() {
+	vinyls := make([]vinyl.VinylUnique, 0, len(k.vinylLookup))
+	for _, v := range k.vinylLookup {
+		vinyls = append(vinyls, v)
+	}
+	k.vinylIndex = vinyl.BuildVinylIndex(vinyls)
+	k.needsRebuild = false
 }

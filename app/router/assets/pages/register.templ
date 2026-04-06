@@ -1,6 +1,9 @@
 package pages
 
-import "github.com/ninesl/vinyl-keeper/router/assets/ui"
+import (
+	"github.com/ninesl/vinyl-keeper/internal/values"
+	"github.com/ninesl/vinyl-keeper/router/assets/ui"
+)
 
 templ RegisterPage(title string) {
 	@ui.Layout(title) {
@@ -10,24 +13,24 @@ templ RegisterPage(title string) {
 		@ui.Nav()
 		<div class="register-form">
 			<form
-				hx-get="/register/submit"
-				hx-target="#results"
+				hx-get={ values.EndpointRegister + values.EndpointSubmit }
+				hx-target={ "#" + values.IDResults }
 				hx-swap="afterbegin"
 				hx-indicator="#loading"
 			>
 				<div class="form-group">
 					<label for="artist">Artist</label>
-					<input type="text" id="artist" name="artist" placeholder="e.g., Death" required/>
+					<input type="text" id="artist" name={ values.QueryArtist } placeholder="e.g., Death" required/>
 				</div>
 				<div class="form-group">
 					<label for="album">Album</label>
-					<input type="text" id="album" name="album" placeholder="e.g., Symbolic" required/>
+					<input type="text" id="album" name={ values.QueryAlbum } placeholder="e.g., Symbolic" required/>
 				</div>
 				<button type="submit">
 					Register Vinyl <span id="loading" class="htmx-indicator">...</span>
 				</button>
 			</form>
 		</div>
-		<div id="results" class="albums-grid"></div>
+		<div id={ values.IDResults } class="albums-grid"></div>
 	}
 }

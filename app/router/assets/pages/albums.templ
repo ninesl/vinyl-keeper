@@ -2,29 +2,19 @@ package pages
 
 import (
 	"fmt"
+	"github.com/ninesl/vinyl-keeper/internal/values"
 	"github.com/ninesl/vinyl-keeper/router/assets/ui"
 	"github.com/ninesl/vinyl-keeper/vinyl"
 )
 
-templ AlbumsPage(title string, vinyls []vinyl.VinylUnique) {
+templ AlbumsPage(title string, index *vinyl.VinylIndex) {
 	@ui.Layout(title) {
 		<header>
 			<h1>Album Collection</h1>
-			<div class="stats">{ fmt.Sprintf("%d", len(vinyls)) } albums</div>
 		</header>
 		@ui.Nav()
-		if len(vinyls) > 0 {
-			<div class="albums-grid">
-				for _, v := range vinyls {
-					@AlbumCard(v)
-				}
-			</div>
-		} else {
-			<div class="empty-state">
-				<h2>No Albums Yet</h2>
-				<p>Start by <a href="/scanner">scanning your first vinyl</a></p>
-			</div>
-		}
+		@ui.FilterControls(values.EndpointAlbums+values.EndpointFilter, index)
+		<div id={ values.IDAlbumZone } hx-get={ values.EndpointAlbums + values.EndpointFilter } hx-trigger="load"></div>
 	}
 }
 
@@ -32,7 +22,7 @@ templ AlbumCard(v vinyl.VinylUnique) {
 	<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
 		<img
 			class="album-cover"
-			src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+			src={ fmt.Sprintf(values.EndpointCover+"/%d", v.VinylID) }
 			alt={ v.VinylTitle + " by " + v.VinylArtist }
 			loading="lazy"
 		/>
@@ -50,7 +40,7 @@ templ AlbumCard(v vinyl.VinylUnique) {
 			}
 			<button
 				class="delete-btn"
-				hx-delete={ fmt.Sprintf("/delete/%d", v.VinylID) }
+				hx-delete={ fmt.Sprintf(values.EndpointDelete+"/%d", v.VinylID) }
 				hx-target={ fmt.Sprintf("#vinyl-%d", v.VinylID) }
 				hx-swap="outerHTML"
 				hx-confirm="Are you sure you want to delete this vinyl?"
@@ -65,7 +55,7 @@ templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
 	<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
 		<img
 			class="album-cover"
-			src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+			src={ fmt.Sprintf(values.EndpointCover+"/%d", v.VinylID) }
 			alt={ v.VinylTitle + " by " + v.VinylArtist }
 		/>
 		<div class="album-info">
@@ -83,7 +73,7 @@ templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
 			<div class="match-confidence">Match: { fmt.Sprintf("%.1f", similarity) }%</div>
 			<button
 				class="delete-btn"
-				hx-delete={ fmt.Sprintf("/delete/%d", v.VinylID) }
+				hx-delete={ fmt.Sprintf(values.EndpointDelete+"/%d", v.VinylID) }
 				hx-target={ fmt.Sprintf("#vinyl-%d", v.VinylID) }
 				hx-swap="outerHTML"
 				hx-confirm="Are you sure you want to delete this vinyl?"
@@ -103,7 +93,7 @@ templ LowConfidenceChoiceCard(v vinyl.VinylUnique, similarity float64) {
 		<div class="album-card" id={ fmt.Sprintf("vinyl-%d", v.VinylID) }>
 			<img
 				class="album-cover"
-				src={ fmt.Sprintf("/cover/%d", v.VinylID) }
+				src={ fmt.Sprintf(values.EndpointCover+"/%d", v.VinylID) }
 				alt={ v.VinylTitle + " by " + v.VinylArtist }
 			/>
 			<div class="album-info">
@@ -123,13 +113,14 @@ templ LowConfidenceChoiceCard(v vinyl.VinylUnique, similarity float64) {
 		<div class="choice-buttons">
 			<button
 				class="btn-primary"
-				hx-post={ fmt.Sprintf("/search/htmx?confirm=1&vinyl_id=%d&similarity=%.1f", v.VinylID, similarity) }
-				hx-target="#result"
+				hx-post={ values.EndpointSearch + values.EndpointHTMX }
+				hx-vals={ fmt.Sprintf(`{"%s":1,"%s":%d,"%s":%.1f}`, values.QueryConfirm, values.ParamVinylID, v.VinylID, values.QuerySimilarity, similarity) }
+				hx-target={ "#" + values.IDResult }
 				hx-swap="innerHTML"
 			>
 				Yes, this is correct
 			</button>
-			<a href="/register" class="btn-secondary">
+			<a href={ values.EndpointRegister } class="btn-secondary">
 				No, register as new vinyl
 			</a>
 		</div>
