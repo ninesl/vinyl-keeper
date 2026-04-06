@@ -15,5 +15,6 @@ vinyl-keeper
 build/
 app/build/
 deploy/
+certs/
 *.tar
 .env
