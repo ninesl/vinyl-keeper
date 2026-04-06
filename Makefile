@@ -30,6 +30,7 @@ EMBED_MODEL_PATH ?= models/ViT-B-32__openai/visual/model.onnx
 EMBED_MODEL_FAMILY ?= clip
 EMBED_DIM ?= 512
 EMBED_IMAGE_SIZE ?= 224
+DB_PATH ?= $(CURDIR)/data/vinylkeeper.db
 
 COMPOSE_LOCAL = podman-compose.local.yml
 COMPOSE_PROD = podman-compose.prod.yml
@@ -68,6 +69,7 @@ show-config:
 	@echo "IMAGE_SERVICE_WAIT_RETRIES=$(IMAGE_SERVICE_WAIT_RETRIES)"
 	@echo "IMAGE_SERVICE_WAIT_SECONDS=$(IMAGE_SERVICE_WAIT_SECONDS)"
 	@echo "EMBED_MODEL_PATH=$(EMBED_MODEL_PATH)"
+	@echo "DB_PATH=$(DB_PATH)"
 
 require-vps-env:
 	@test -n "$(VPS_USER)" || (echo "Missing VPS user. Set VINYL_KEEPER_VPS_USER in .env or shell env." && exit 1)
@@ -127,6 +129,7 @@ dev-native: certs
 	EMBED_MODEL_FAMILY=$(EMBED_MODEL_FAMILY) \
 	EMBED_DIM=$(EMBED_DIM) \
 	EMBED_IMAGE_SIZE=$(EMBED_IMAGE_SIZE) \
+	DB_PATH=$(DB_PATH) \
 	./scripts/run-local.sh
 
 dev-down:

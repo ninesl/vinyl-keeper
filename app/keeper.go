@@ -438,17 +438,20 @@ func (k *keeper) initKeeper(ctx context.Context) error {
 
 const dbFileName = "vinylkeeper.db"
 
-func databasePath() string {
+func databasePath() (string, error) {
 	if path := os.Getenv("DB_PATH"); path != "" {
-		return path
+		return path, nil
 	}
 
-	return dbFileName
+	return "", fmt.Errorf("DB_PATH is required; expected canonical database path (for example /data/%s in containers or ./data/%s locally)", dbFileName, dbFileName)
 }
 
 // initializeQueries creates or loads the DB and assigns to k.queries
 func (k *keeper) initializeQueries(ctx context.Context) error {
-	dbPath := databasePath()
+	dbPath, err := databasePath()
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(dbPath)
 	if dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -456,7 +459,7 @@ func (k *keeper) initializeQueries(ctx context.Context) error {
 		}
 	}
 
-	_, err := os.Stat(dbPath)
+	_, err = os.Stat(dbPath)
 	isNew := errors.Is(err, fs.ErrNotExist)
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {

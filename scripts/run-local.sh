@@ -11,8 +11,41 @@ port="${IMAGE_SERVICE_PORT:-8081}"
 health_endpoint="${IMAGE_SERVICE_HEALTH_ENDPOINT:-/health}"
 health_url="${IMAGE_SERVICE_HEALTH_URL:-http://${host}:${port}${health_endpoint}}"
 
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+repo_root="$(dirname -- "$script_dir")"
+db_path="${DB_PATH:-${repo_root}/data/vinylkeeper.db}"
+legacy_db_root="${repo_root}/vinylkeeper.db"
+legacy_db_app="${repo_root}/app/vinylkeeper.db"
+
 retries="${IMAGE_SERVICE_WAIT_RETRIES:-60}"
 sleep_seconds="${IMAGE_SERVICE_WAIT_SECONDS:-1}"
+
+mkdir -p "$(dirname -- "$db_path")"
+
+if [ ! -f "$db_path" ]; then
+  if [ -f "$legacy_db_root" ]; then
+    cp "$legacy_db_root" "$db_path"
+    if [ -f "${legacy_db_root}-wal" ]; then cp "${legacy_db_root}-wal" "${db_path}-wal"; fi
+    if [ -f "${legacy_db_root}-shm" ]; then cp "${legacy_db_root}-shm" "${db_path}-shm"; fi
+    echo "Copied legacy DB to canonical DB path: $db_path"
+  elif [ -f "$legacy_db_app" ]; then
+    cp "$legacy_db_app" "$db_path"
+    if [ -f "${legacy_db_app}-wal" ]; then cp "${legacy_db_app}-wal" "${db_path}-wal"; fi
+    if [ -f "${legacy_db_app}-shm" ]; then cp "${legacy_db_app}-shm" "${db_path}-shm"; fi
+    echo "Copied legacy app DB to canonical DB path: $db_path"
+  fi
+fi
+
+if [ -f "$legacy_db_root" ] && [ -f "$db_path" ] && [ "$legacy_db_root" != "$db_path" ]; then
+  echo "Note: legacy DB exists at $legacy_db_root; canonical DB in use is $db_path"
+fi
+
+if [ -f "$legacy_db_app" ] && [ -f "$db_path" ] && [ "$legacy_db_app" != "$db_path" ]; then
+  echo "Note: legacy app DB exists at $legacy_db_app; canonical DB in use is $db_path"
+fi
+
+export DB_PATH="$db_path"
+echo "Using DB_PATH=$DB_PATH"
 
 cleanup() {
   if [ -n "${uvicorn_pid:-}" ]; then
