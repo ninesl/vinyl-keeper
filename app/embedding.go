@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ninesl/vinyl-keeper/router"
+	"github.com/ninesl/vinyl-keeper/app/router"
 )
 
 // Embedding is a dense float64 vector (e.g. 512-d from the ONNX model).

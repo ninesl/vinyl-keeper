@@ -1,87 +1,67 @@
 package pages
 
 import (
-	"github.com/ninesl/vinyl-keeper/internal/values"
-	"github.com/ninesl/vinyl-keeper/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/app/internal/values"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
 )
 
 templ ScannerPage(title string) {
 	@ui.Layout(title) {
 		<h1>Vinyl Scanner</h1>
 		@ui.Nav()
+		<div id="camera-controls">
+			<button id="enable-camera-btn" onclick="enableCamera()">Enable Camera</button>
+			<p class="camera-help">Camera access is needed to scan vinyl covers</p>
+		</div>
 		<div id="video-container" style="display: none;">
-			<video id="camera" autoplay playsinline muted></video>
+			<video id="camera" autoplay playsinline></video>
 			<div id="alignment-box"></div>
 		</div>
 		<button id="scan-btn" onclick="scanAndSubmit()" style="display: none;">SCAN</button>
-		<button id="retry-camera-btn" onclick="retryCamera()" style="display: none;">Retry Camera</button>
 		<canvas id="canvas"></canvas>
 		<div id={ values.IDResult } data-search-endpoint={ values.EndpointSearch + values.EndpointHTMX }></div>
-		<script>
+		@ScannerScript()
+	}
+}
+
+const noCamera = `<p class="error">Camera access is not supported on this browser. Please use a modern browser (Chrome, Safari, Firefox).</p>`
+
+templ ScannerScript() {
+	<script>
     const video = document.getElementById('camera');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scanBtn = document.getElementById('scan-btn');
-    const retryBtn = document.getElementById('retry-camera-btn');
-    const videoContainer = document.getElementById('video-container');
     const resultDiv = document.querySelector('[data-search-endpoint]');
     const searchEndpoint = resultDiv.dataset.searchEndpoint;
-    let cameraStream = null;
-    let cameraStarting = false;
 
+
+    // Check if camera API is available
     function checkCameraSupport() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        resultDiv.innerHTML = '<p class="error">Camera access is not supported on this browser. Please use a modern browser.</p>';
+        resultDiv.innerHTML = { noCamera }; 
+        document.getElementById('enable-camera-btn').disabled = true;
         return false;
       }
       return true;
     }
 
-    function cameraErrorMessage(err) {
-      let errorMsg = 'Could not access camera. ';
-
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMsg += 'Camera permission was denied. Please allow camera access and retry.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        errorMsg += 'No camera found on this device.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMsg += 'Camera is already in use by another application.';
-      } else if (err.name === 'OverconstrainedError') {
-        errorMsg += 'Camera does not support the requested settings.';
-      } else if (err.name === 'SecurityError') {
-        errorMsg += 'Camera access is blocked due to security settings.';
-      } else {
-        errorMsg += `Error: ${err.message}`;
-      }
-
-      return errorMsg;
-    }
-
-    function setCameraUIReady() {
-      videoContainer.style.display = 'block';
-      scanBtn.style.display = 'block';
-      retryBtn.style.display = 'none';
-    }
-
-    function setCameraUIFailed(message) {
-      videoContainer.style.display = 'none';
-      scanBtn.style.display = 'none';
-      retryBtn.style.display = 'inline-block';
-      resultDiv.innerHTML = `<p class="error">${message}</p>`;
-    }
-
-    async function startCamera() {
-      if (cameraStarting || cameraStream) {
-        return;
-      }
+    // Enable camera when user clicks button
+    async function enableCamera() {
       if (!checkCameraSupport()) {
         return;
       }
 
-      cameraStarting = true;
+      const enableBtn = document.getElementById('enable-camera-btn');
+      const videoContainer = document.getElementById('video-container');
+      const cameraControls = document.getElementById('camera-controls');
+      
+      enableBtn.disabled = true;
+      enableBtn.textContent = 'Requesting...';
       resultDiv.innerHTML = '';
-
+      
       try {
+        // Request camera with different constraints for mobile
         const constraints = {
           video: {
             facingMode: { ideal: 'environment' },
@@ -91,62 +71,80 @@ templ ScannerPage(title string) {
           audio: false
         };
 
+        console.log('Requesting camera with constraints:', constraints);
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        cameraStream = stream;
-        video.muted = true;
+        console.log('Camera stream obtained:', stream);
+        
         video.srcObject = stream;
-
+        
+        // Wait for video to be ready
         await new Promise((resolve) => {
-          video.onloadedmetadata = () => resolve();
+          video.onloadedmetadata = () => {
+            console.log('Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+            video.play();
+            resolve();
+          };
         });
-
-        await video.play();
-        setCameraUIReady();
+        
+        // Hide controls, show video and scan button
+        cameraControls.style.display = 'none';
+        videoContainer.style.display = 'block';
+        scanBtn.style.display = 'block';
+        
+        console.log('Camera enabled successfully');
+        
       } catch (err) {
         console.error('Camera error:', err);
-        setCameraUIFailed(cameraErrorMessage(err));
-        cameraStream = null;
-      } finally {
-        cameraStarting = false;
+        console.error('Error name:', err.name);
+        console.error('Error message:', err.message);
+        
+        enableBtn.disabled = false;
+        enableBtn.textContent = 'Enable Camera';
+        
+        // Detailed error messages
+        let errorMsg = 'Could not access camera. ';
+        
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg += 'Camera permission was denied. Please allow camera access and try again.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMsg += 'No camera found on this device.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorMsg += 'Camera is already in use by another application.';
+        } else if (err.name === 'OverconstrainedError') {
+          errorMsg += 'Camera does not support the requested settings.';
+        } else if (err.name === 'SecurityError') {
+          errorMsg += 'Camera access is blocked due to security settings.';
+        } else {
+          errorMsg += `Error: ${err.message}`;
+        }
+        
+        resultDiv.innerHTML = `<p class="error">${errorMsg}</p>`;
       }
     }
 
-    function stopCamera() {
-      if (!cameraStream) {
-        return;
-      }
+    // Check support on page load
+    window.addEventListener('load', checkCameraSupport);
 
-      for (const track of cameraStream.getTracks()) {
-        track.stop();
-      }
-      cameraStream = null;
-      video.srcObject = null;
-    }
-
-    async function retryCamera() {
-      stopCamera();
-      await startCamera();
-    }
-
-    window.addEventListener('load', startCamera);
-    window.addEventListener('beforeunload', stopCamera);
-
+    // Capture frame from video, crop to alignment box, return JPEG blob
     function captureFrame() {
       const box = document.getElementById('alignment-box');
       const videoRect = video.getBoundingClientRect();
       const boxRect = box.getBoundingClientRect();
-
+      
+      // Calculate the position relative to video element
       const scaleX = video.videoWidth / videoRect.width;
       const scaleY = video.videoHeight / videoRect.height;
-
+      
       const cropX = (boxRect.left - videoRect.left) * scaleX;
       const cropY = (boxRect.top - videoRect.top) * scaleY;
       const cropWidth = boxRect.width * scaleX;
       const cropHeight = boxRect.height * scaleY;
-
+      
+      // Set canvas to alignment box size
       canvas.width = cropWidth;
       canvas.height = cropHeight;
-
+      
+      // Draw just the alignment region from video
       ctx.drawImage(
         video,
         cropX,
@@ -158,12 +156,14 @@ templ ScannerPage(title string) {
         cropWidth,
         cropHeight
       );
-
+      
+      // Return as JPEG blob
       return new Promise(resolve => {
         canvas.toBlob(resolve, 'image/jpeg', 0.9);
       });
     }
 
+    // Send frame to server
     async function scanAndSubmit() {
       scanBtn.disabled = true;
       scanBtn.textContent = 'SCANNING...';
@@ -197,6 +197,9 @@ templ ScannerPage(title string) {
         scanBtn.textContent = 'SCAN';
       }
     }
+
+    function tryAgain() {
+      resultDiv.innerHTML = '';
+    }
   </script>
-	}
 }

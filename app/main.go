@@ -29,9 +29,9 @@ import (
 	// Background reading: https://go.dev/blog/certpool
 	_ "golang.org/x/crypto/x509roots/fallback"
 
-	"github.com/ninesl/vinyl-keeper/internal/values"
-	"github.com/ninesl/vinyl-keeper/router"
-	"github.com/ninesl/vinyl-keeper/vinyl"
+	"github.com/ninesl/vinyl-keeper/app/internal/values"
+	"github.com/ninesl/vinyl-keeper/app/router"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
 //go:embed router/assets/static

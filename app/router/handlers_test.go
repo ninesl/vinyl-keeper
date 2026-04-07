@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ninesl/vinyl-keeper/vinyl"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
 func TestScanCoverHTMLHandler_HighConfidence(t *testing.T) {

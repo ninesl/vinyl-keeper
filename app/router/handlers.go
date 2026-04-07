@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ninesl/vinyl-keeper/internal/values"
-	"github.com/ninesl/vinyl-keeper/router/assets/pages"
-	"github.com/ninesl/vinyl-keeper/router/assets/ui"
-	"github.com/ninesl/vinyl-keeper/vinyl"
+	"github.com/ninesl/vinyl-keeper/app/internal/values"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/pages"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
 // Embedding is a float64 slice

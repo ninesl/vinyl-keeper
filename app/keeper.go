@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ninesl/vinyl-keeper/vinyl"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 	_ "modernc.org/sqlite"
 )
 
