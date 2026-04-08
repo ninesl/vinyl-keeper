@@ -1,30 +1,60 @@
 package pages
 
 import (
-	"github.com/ninesl/vinyl-keeper/app/internal/values"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dialog"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/icon"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
-templ ScannerPage(title string) {
+templ ScannerPage(title string, index *vinyl.VinylIndex, signedInUserName string) {
 	@ui.Layout(title) {
-		<h1>Vinyl Scanner</h1>
-		@ui.Nav()
-		<div id="camera-controls">
-			<button id="enable-camera-btn" onclick="enableCamera()">Enable Camera</button>
-			<p class="camera-help">Camera access is needed to scan vinyl covers</p>
+		<!-- Fixed camera background layer -->
+		<div id="video-container" class="fixed inset-0 z-0 hidden overflow-hidden bg-black">
+			<video id="camera" class="size-full object-cover" autoplay playsinline></video>
+			<div id="alignment-box" class="absolute left-1/2 top-1/2 z-10 h-[350px] w-[350px] -translate-x-1/2 -translate-y-1/2 rounded border-2 border-primary"></div>
 		</div>
-		<div id="video-container" style="display: none;">
-			<video id="camera" autoplay playsinline></video>
-			<div id="alignment-box"></div>
+		<canvas id="canvas" class="hidden"></canvas>
+		<!-- Overlay UI layer -->
+		<div id="scanner-overlay" class="relative z-10">
+			@ui.Nav(index, signedInUserName)
+			<div id="scan-action-zone" class="fixed left-1/2 z-40 -translate-x-1/2" style="top: calc(50% + 175px + 1.5rem);">
+				<div class="flex flex-col items-center gap-4">
+					@dialog.Trigger(dialog.TriggerProps{
+						For: "modal-zone-dialog",
+						Attributes: templ.Attributes{
+							"onclick": "handleScanClick(event)",
+						},
+					}) {
+						<button
+							id="scan-btn"
+							type="button"
+							class="pointer-events-auto hidden size-20 rounded-full border border-primary/50 bg-background/85 text-primary shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md transition-all hover:scale-105 hover:border-primary active:scale-95 flex items-center justify-center cursor-pointer"
+						>
+							@icon.ScanSearch(icon.Props{Class: "size-8 drop-shadow-sm"})
+							<span class="sr-only">Scan</span>
+						</button>
+					}
+					<button
+						id="camera-toggle-btn"
+						type="button"
+						onclick="toggleCamera()"
+						class="pointer-events-auto hidden size-10 rounded-full border border-primary/50 bg-background/85 text-primary shadow backdrop-blur-md transition-all hover:scale-105 hover:border-primary active:scale-95 flex items-center justify-center cursor-pointer"
+					>
+						<span id="camera-toggle-icon-on">
+							@icon.Video(icon.Props{Class: "size-4"})
+						</span>
+						<span id="camera-toggle-icon-off" class="hidden">
+							@icon.VideoOff(icon.Props{Class: "size-4"})
+						</span>
+						<span class="sr-only">Toggle camera</span>
+					</button>
+				</div>
+			</div>
 		</div>
-		<button id="scan-btn" onclick="scanAndSubmit()" style="display: none;">SCAN</button>
-		<canvas id="canvas"></canvas>
-		<div id={ values.IDResult } data-search-endpoint={ values.EndpointSearch + values.EndpointHTMX }></div>
 		@ScannerScript()
 	}
 }
-
-const noCamera = `<p class="error">Camera access is not supported on this browser. Please use a modern browser (Chrome, Safari, Firefox).</p>`
 
 templ ScannerScript() {
 	<script>
@@ -32,33 +62,36 @@ templ ScannerScript() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scanBtn = document.getElementById('scan-btn');
-    const resultDiv = document.querySelector('[data-search-endpoint]');
-    const searchEndpoint = resultDiv.dataset.searchEndpoint;
+    const defaultScanBtnHtml = scanBtn.innerHTML;
+    const modalZoneContent = document.getElementById('modal-zone-content');
+    const searchEndpoint = '/search/htmx';
+    const videoContainer = document.getElementById('video-container');
+    const cameraToggleBtn = document.getElementById('camera-toggle-btn');
+    const cameraIconOn = document.getElementById('camera-toggle-icon-on');
+    const cameraIconOff = document.getElementById('camera-toggle-icon-off');
+    const noCameraHtml = '<p class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">Camera access is not supported on this browser. Please use a modern browser (Chrome, Safari, Firefox).</p>';
+    const loadingMsg = '<p class="text-sm text-muted-foreground">Scanning vinyl cover...</p>';
+    let cameraEnabled = true;
+
+    // Camera is now fixed fullscreen via CSS, no dynamic sizing needed
 
 
     // Check if camera API is available
     function checkCameraSupport() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        resultDiv.innerHTML = { noCamera }; 
-        document.getElementById('enable-camera-btn').disabled = true;
+        if (modalZoneContent) modalZoneContent.innerHTML = noCameraHtml;
         return false;
       }
       return true;
     }
 
-    // Enable camera when user clicks button
+    // Enable camera on page load
     async function enableCamera() {
       if (!checkCameraSupport()) {
         return;
       }
 
-      const enableBtn = document.getElementById('enable-camera-btn');
-      const videoContainer = document.getElementById('video-container');
-      const cameraControls = document.getElementById('camera-controls');
-      
-      enableBtn.disabled = true;
-      enableBtn.textContent = 'Requesting...';
-      resultDiv.innerHTML = '';
+      if (modalZoneContent) modalZoneContent.innerHTML = '';
       
       try {
         // Request camera with different constraints for mobile
@@ -86,10 +119,10 @@ templ ScannerScript() {
           };
         });
         
-        // Hide controls, show video and scan button
-        cameraControls.style.display = 'none';
-        videoContainer.style.display = 'block';
-        scanBtn.style.display = 'block';
+        // Show video, scan button, and camera toggle
+        videoContainer.classList.remove('hidden');
+        scanBtn.classList.remove('hidden');
+        cameraToggleBtn.classList.remove('hidden');
         
         console.log('Camera enabled successfully');
         
@@ -97,10 +130,7 @@ templ ScannerScript() {
         console.error('Camera error:', err);
         console.error('Error name:', err.name);
         console.error('Error message:', err.message);
-        
-        enableBtn.disabled = false;
-        enableBtn.textContent = 'Enable Camera';
-        
+
         // Detailed error messages
         let errorMsg = 'Could not access camera. ';
         
@@ -115,15 +145,15 @@ templ ScannerScript() {
         } else if (err.name === 'SecurityError') {
           errorMsg += 'Camera access is blocked due to security settings.';
         } else {
-          errorMsg += `Error: ${err.message}`;
+          errorMsg += 'Error: ' + err.message;
         }
-        
-        resultDiv.innerHTML = `<p class="error">${errorMsg}</p>`;
+
+        if (modalZoneContent) modalZoneContent.innerHTML = '<p class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">' + errorMsg + '</p>';
       }
     }
 
-    // Check support on page load
-    window.addEventListener('load', checkCameraSupport);
+    // Start camera automatically on page load
+    window.addEventListener('load', enableCamera);
 
     // Capture frame from video, crop to alignment box, return JPEG blob
     function captureFrame() {
@@ -159,47 +189,76 @@ templ ScannerScript() {
       
       // Return as JPEG blob
       return new Promise(resolve => {
-        canvas.toBlob(resolve, 'image/jpeg', 0.9);
+        canvas.toBlob(resolve, "image/jpeg", 0.9);
       });
     }
 
-    // Send frame to server
-    async function scanAndSubmit() {
-      scanBtn.disabled = true;
-      scanBtn.textContent = 'SCANNING...';
-      resultDiv.innerHTML = '<p class="loading">Scanning vinyl cover...</p>';
+    // Toggle camera on/off
+    function toggleCamera() {
+      if (cameraEnabled) {
+        // Turn off: stop tracks, hide video
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(t => t.stop());
+          video.srcObject = null;
+        }
+        videoContainer.classList.add('hidden');
+        scanBtn.classList.add('hidden');
+        cameraIconOn.classList.add('hidden');
+        cameraIconOff.classList.remove('hidden');
+        cameraToggleBtn.classList.remove('border-primary/50', 'bg-background/85', 'text-primary');
+        cameraToggleBtn.classList.add('border-secondary/50', 'bg-secondary/85', 'text-secondary-foreground');
+        cameraEnabled = false;
+      } else {
+        // Turn on: restart camera
+        cameraIconOn.classList.remove('hidden');
+        cameraIconOff.classList.add('hidden');
+        cameraToggleBtn.classList.add('border-primary/50', 'bg-background/85', 'text-primary');
+        cameraToggleBtn.classList.remove('border-secondary/50', 'bg-secondary/85', 'text-secondary-foreground');
+        cameraEnabled = true;
+        enableCamera();
+      }
+    }
+
+    // Handle scan button click - dialog trigger will open modal, we just do the scan
+    async function handleScanClick(event) {
+      // Let dialog trigger handle opening the modal naturally
+      // We just capture and submit the frame
+      
+				scanBtn.disabled = true;
+				scanBtn.classList.add('animate-pulse');
+				if (modalZoneContent) modalZoneContent.innerHTML = loadingMsg;
       
       try {
         const blob = await captureFrame();
         
         const response = await fetch(searchEndpoint, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'image/jpeg',
+            "Content-Type": "image/jpeg",
           },
           body: blob
         });
         
         if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
+          throw new Error("Server error: " + response.status);
         }
         
-        const html = await response.text();
-        resultDiv.innerHTML = html;
-        if (window.htmx) {
-          window.htmx.process(resultDiv);
-        }
-      } catch (err) {
-        console.error('Scan error:', err);
-        resultDiv.innerHTML = `<p class="error">Error: ${err.message}</p>`;
-      } finally {
-        scanBtn.disabled = false;
-        scanBtn.textContent = 'SCAN';
-      }
-    }
-
-    function tryAgain() {
-      resultDiv.innerHTML = '';
-    }
+				const html = await response.text();
+				if (modalZoneContent) {
+				  modalZoneContent.innerHTML = html;
+				  if (window.htmx) {
+				    window.htmx.process(modalZoneContent);
+				  }
+				}
+				document.body.dispatchEvent(new CustomEvent('vinyl-registered'));
+			} catch (err) {
+				console.error("Scan error:", err);
+				if (modalZoneContent) modalZoneContent.innerHTML = "<p class=\"rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive\">Error: " + err.message + "</p>";
+			} finally {
+				scanBtn.disabled = false;
+				scanBtn.classList.remove('animate-pulse');
+				scanBtn.innerHTML = defaultScanBtnHtml;
+			}
+		}
   </script>
 }

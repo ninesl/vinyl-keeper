@@ -36,8 +36,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllVinylsStmt, err = db.PrepareContext(ctx, getAllVinyls); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllVinyls: %w", err)
 	}
+	if q.getUserByIDStmt, err = db.PrepareContext(ctx, getUserByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserByID: %w", err)
+	}
 	if q.getUserVinylPlaysStmt, err = db.PrepareContext(ctx, getUserVinylPlays); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserVinylPlays: %w", err)
+	}
+	if q.listUsersStmt, err = db.PrepareContext(ctx, listUsers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUsers: %w", err)
 	}
 	if q.playVinylCollectionStmt, err = db.PrepareContext(ctx, playVinylCollection); err != nil {
 		return nil, fmt.Errorf("error preparing query PlayVinylCollection: %w", err)
@@ -73,9 +79,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAllVinylsStmt: %w", cerr)
 		}
 	}
+	if q.getUserByIDStmt != nil {
+		if cerr := q.getUserByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserByIDStmt: %w", cerr)
+		}
+	}
 	if q.getUserVinylPlaysStmt != nil {
 		if cerr := q.getUserVinylPlaysStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserVinylPlaysStmt: %w", cerr)
+		}
+	}
+	if q.listUsersStmt != nil {
+		if cerr := q.listUsersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUsersStmt: %w", cerr)
 		}
 	}
 	if q.playVinylCollectionStmt != nil {
@@ -136,7 +152,9 @@ type Queries struct {
 	deleteVinylStmt           *sql.Stmt
 	getAllUserVinylPlaysStmt  *sql.Stmt
 	getAllVinylsStmt          *sql.Stmt
+	getUserByIDStmt           *sql.Stmt
 	getUserVinylPlaysStmt     *sql.Stmt
+	listUsersStmt             *sql.Stmt
 	playVinylCollectionStmt   *sql.Stmt
 	recordVinylCollectionStmt *sql.Stmt
 	registerVinylStmt         *sql.Stmt
@@ -150,7 +168,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteVinylStmt:           q.deleteVinylStmt,
 		getAllUserVinylPlaysStmt:  q.getAllUserVinylPlaysStmt,
 		getAllVinylsStmt:          q.getAllVinylsStmt,
+		getUserByIDStmt:           q.getUserByIDStmt,
 		getUserVinylPlaysStmt:     q.getUserVinylPlaysStmt,
+		listUsersStmt:             q.listUsersStmt,
 		playVinylCollectionStmt:   q.playVinylCollectionStmt,
 		recordVinylCollectionStmt: q.recordVinylCollectionStmt,
 		registerVinylStmt:         q.registerVinylStmt,

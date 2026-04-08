@@ -1,0 +1,18 @@
+package pages
+
+import (
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/parts"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
+)
+
+templ AlbumCard(v vinyl.VinylUnique) {
+	@parts.AlbumCard(v, true, false, 0)
+}
+
+templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
+	@parts.AlbumCard(v, true, true, similarity)
+}
+
+templ LowConfidenceChoiceCard(v vinyl.VinylUnique, similarity float64) {
+	@parts.LowConfidenceChoiceCard(v, similarity)
+}

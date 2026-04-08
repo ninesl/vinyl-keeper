@@ -1,0 +1,7 @@
+{
+  "componentsDir": "router/assets/ui/components",
+  "utilsDir": "router/assets/ui/utils",
+  "moduleName": "github.com/ninesl/vinyl-keeper/app",
+  "jsDir": "router/assets/static/js",
+  "jsPublicPath": "/assets/static/js"
+}

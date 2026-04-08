@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ninesl/vinyl-keeper/app/internal/values"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/pages"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/parts"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
@@ -25,9 +26,19 @@ func parseFilterCriteria(r *http.Request) vinyl.FilterCriteria {
 
 	return vinyl.FilterCriteria{
 		Artist: query.Get(values.QueryArtist),
-		Genres: query[values.QueryGenre], // supports multiple values
-		Styles: query[values.QueryStyle], // supports multiple values
+		Genres: nonEmptyValues(query[values.QueryGenre]), // supports multiple values
+		Styles: nonEmptyValues(query[values.QueryStyle]), // supports multiple values
 	}
+}
+
+func nonEmptyValues(values []string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
 }
 
 type ScanHandlerParams struct {
@@ -44,30 +55,170 @@ type ScanResult struct {
 	Similarity float64           `json:"similarity"`
 }
 
+type SignedInUser struct {
+	UserID   int64
+	UserName string
+}
+
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
 }
 
-func ScannerPageHandler(w http.ResponseWriter, r *http.Request) {
-	pages.ScannerPage(values.TitleScanner).Render(r.Context(), w)
-}
-
-func AlbumsPageHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
+func ScannerPageHandler(getIndex func() *vinyl.VinylIndex, getSignedInUser func(*http.Request) *SignedInUser) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		index := getIndex()
-		pages.AlbumsPage(values.TitleAlbums, index).Render(r.Context(), w)
+		signedIn := getSignedInUser(r)
+		if signedIn == nil {
+			pages.ScannerPage(values.TitleScanner, index, "").Render(r.Context(), w)
+			return
+		}
+		pages.ScannerPage(values.TitleScanner, index, signedIn.UserName).Render(r.Context(), w)
 	}
 }
 
-func MyVinylPageHandler(
-	getIndex func() *vinyl.VinylIndex,
-	getUserID func(*http.Request) int64,
-) http.HandlerFunc {
+func ModalAllVinylHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		index := getIndex()
-		pages.MyVinylPage(values.TitleMyVinyl, index).Render(r.Context(), w)
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+		ui.FilterPanel(values.EndpointAlbums+values.EndpointFilter, getIndex(), "all-vinyl-scope", "all-vinyl-zone", "all-vinyl-filter-artist").Render(r.Context(), w)
 	}
+}
+
+func ModalMyCollectionHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+		ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, getIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist").Render(r.Context(), w)
+	}
+}
+
+func ModalRegisterHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+		ui.VinylRegisterForm().Render(r.Context(), w)
+	}
+}
+
+type SignInHandlerParams struct {
+	ListUsers     func() ([]vinyl.User, error)
+	CreateUser    func(string) (vinyl.User, error)
+	GetUserByID   func(int64) (*vinyl.User, error)
+	GetSignedInID func(*http.Request) int64
+}
+
+func ModalSignInHandler(params SignInHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+		ui.SignInPanel().Render(r.Context(), w)
+	}
+}
+
+func SignInUsersHandler(params SignInHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		users, err := params.ListUsers()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to load users").Render(r.Context(), w)
+			return
+		}
+
+		signedInID := params.GetSignedInID(r)
+		ui.SignInUsersList(users, signedInID).Render(r.Context(), w)
+	}
+}
+
+func SignInButtonHandler(params SignInHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		signedInID := params.GetSignedInID(r)
+		if signedInID <= 0 {
+			ui.SignInButtonZone("").Render(r.Context(), w)
+			return
+		}
+
+		user, err := params.GetUserByID(signedInID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to load signed-in user").Render(r.Context(), w)
+			return
+		}
+		if user == nil {
+			ui.SignInButtonZone("").Render(r.Context(), w)
+			return
+		}
+
+		ui.SignInButtonZone(user.UserName).Render(r.Context(), w)
+	}
+}
+
+func SignInNewHandler(params SignInHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		name := r.FormValue(values.QueryUserName)
+		if name == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Missing user name").Render(r.Context(), w)
+			return
+		}
+
+		created, err := params.CreateUser(name)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Could not create user (name may already exist)").Render(r.Context(), w)
+			return
+		}
+
+		signedInID := params.GetSignedInID(r)
+		ui.SignInUserRow(created, signedInID).Render(r.Context(), w)
+	}
+}
+
+func SignInSubmitHandler(params SignInHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		userIDStr := r.FormValue(values.QueryUserID)
+		if userIDStr == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Missing user ID").Render(r.Context(), w)
+			return
+		}
+
+		userID, err := strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil || userID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Invalid user ID").Render(r.Context(), w)
+			return
+		}
+
+		user, err := params.GetUserByID(userID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to sign in").Render(r.Context(), w)
+			return
+		}
+		if user == nil {
+			w.WriteHeader(http.StatusNotFound)
+			parts.ErrorMessage("User not found").Render(r.Context(), w)
+			return
+		}
+
+		setUserCookie(w, user.UserID)
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func setUserCookie(w http.ResponseWriter, userID int64) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     values.CookieUserID,
+		Value:    strconv.FormatInt(userID, 10),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func AlbumsFilterHandler(
@@ -162,24 +313,24 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 			vinylIDStr := r.FormValue(values.ParamVinylID)
 			if vinylIDStr == "" {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`<p class="error">Missing vinyl ID</p>`))
+				parts.ErrorMessage("Missing vinyl ID").Render(r.Context(), w)
 				return
 			}
 			vinylID, err := strconv.ParseInt(vinylIDStr, 10, 64)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`<p class="error">Invalid vinyl ID</p>`))
+				parts.ErrorMessage("Invalid vinyl ID").Render(r.Context(), w)
 				return
 			}
 			if params.GetVinyl == nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`<p class="error">Scanner confirmation is not configured</p>`))
+				parts.ErrorMessage("Scanner confirmation is not configured").Render(r.Context(), w)
 				return
 			}
 			v := params.GetVinyl(vinylID)
 			if v == nil {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte(`<p class="error">Vinyl not found</p>`))
+				parts.ErrorMessage("Vinyl not found").Render(r.Context(), w)
 				return
 			}
 			similarityPercent := 100.0
@@ -202,14 +353,14 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 
 		// Optional: validate it's actually a JPEG (starts with FF D8)
 		if len(body) < 3 || body[0] != 0xFF || body[1] != 0xD8 {
-			w.Write([]byte(`<p class="error">Invalid image format</p>`))
+			parts.ErrorMessage("Invalid image format").Render(r.Context(), w)
 			return
 		}
 
 		// Get embedding from ONNX service
 		embedding, err := params.GetEmbedding(body)
 		if err != nil {
-			w.Write([]byte(`<p class="error">Failed to process image: ` + err.Error() + `</p>`))
+			parts.ErrorMessage("Failed to process image: "+err.Error()).Render(r.Context(), w)
 			return
 		}
 
@@ -217,14 +368,14 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 		vinylResult := params.FindClosestVinylUnqiue(embedding)
 
 		if vinylResult.VinylID == 0 {
-			w.Write([]byte(`<p class="error">No matching vinyl found</p>`))
+			parts.ErrorMessage("No matching vinyl found").Render(r.Context(), w)
 			return
 		}
 
 		// Decode the embedding from blob to calculate similarity
 		vinylEmbedding, err := embeddingFromBlob(vinylResult.CoverEmbedding)
 		if err != nil {
-			w.Write([]byte(`<p class="error">Failed to decode vinyl embedding</p>`))
+			parts.ErrorMessage("Failed to decode vinyl embedding").Render(r.Context(), w)
 			return
 		}
 
@@ -244,10 +395,12 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 func renderAcceptedScanResult(w http.ResponseWriter, r *http.Request, params ScanHandlerParams, vinylResult vinyl.VinylUnique, similarityPercent float64) {
 	if params.PlayRecord != nil {
 		userID := params.GetUserID(r)
-		if err := params.PlayRecord(vinylResult.VinylID, userID); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`<p class="error">Failed to record play: ` + err.Error() + `</p>`))
-			return
+		if userID > 0 {
+			if err := params.PlayRecord(vinylResult.VinylID, userID); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				parts.ErrorMessage("Failed to record play: "+err.Error()).Render(r.Context(), w)
+				return
+			}
 		}
 	}
 	pages.ScanResultCard(vinylResult, similarityPercent).Render(r.Context(), w)
@@ -296,10 +449,6 @@ type RegisterResult struct {
 	Error   string            `json:"error,omitempty"`
 }
 
-func RegisterPageHandler(w http.ResponseWriter, r *http.Request) {
-	pages.RegisterPage(values.TitleRegister).Render(r.Context(), w)
-}
-
 func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
@@ -309,14 +458,14 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 
 		if artist == "" || album == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`<div class="error">Missing artist or album name</div>`))
+			parts.ErrorMessage("Missing artist or album name").Render(r.Context(), w)
 			return
 		}
 
 		vinylUnique, err := params.RegisterVinyl(artist, album)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`<div class="error">` + err.Error() + `</div>`))
+			parts.ErrorMessage(err.Error()).Render(r.Context(), w)
 			return
 		}
 
@@ -335,20 +484,20 @@ func DeleteVinylHandler(params DeleteHandlerParams) http.HandlerFunc {
 		vinylIDStr := r.PathValue(values.ParamVinylID)
 		if vinylIDStr == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`<div class="error">Missing vinyl ID</div>`))
+			parts.ErrorMessage("Missing vinyl ID").Render(r.Context(), w)
 			return
 		}
 
 		vinylID, err := strconv.ParseInt(vinylIDStr, 10, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`<div class="error">Invalid vinyl ID</div>`))
+			parts.ErrorMessage("Invalid vinyl ID").Render(r.Context(), w)
 			return
 		}
 
 		if err := params.DeleteVinyl(vinylID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`<div class="error">Failed to delete: ` + err.Error() + `</div>`))
+			parts.ErrorMessage("Failed to delete: "+err.Error()).Render(r.Context(), w)
 			return
 		}
 

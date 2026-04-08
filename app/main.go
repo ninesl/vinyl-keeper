@@ -29,13 +29,13 @@ import (
 	// Background reading: https://go.dev/blog/certpool
 	_ "golang.org/x/crypto/x509roots/fallback"
 
-	"github.com/ninesl/vinyl-keeper/app/internal/values"
 	"github.com/ninesl/vinyl-keeper/app/router"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
-//go:embed router/assets/static
-var staticFS embed.FS
+//go:embed router/assets
+var assetsFS embed.FS
 
 func setEmbeddingRoutes(r *router.Router, keeper *keeper, getUserID func(*http.Request) int64) {
 	// Search endpoint (JSON response)
@@ -62,28 +62,30 @@ func setEmbeddingRoutes(r *router.Router, keeper *keeper, getUserID func(*http.R
 			GetUserID:  getUserID,
 		}))
 
-	// Search endpoint (HTML response for scanner)
+	// Search endpoint (HTML response for scanner) — triggers vinyl-registered on play
 	r.Route(http.MethodPost,
 		values.EndpointSearch+values.EndpointHTMX,
-		router.ScanCoverHTMLHandler(router.ScanHandlerParams{
-			GetEmbedding: func(imgData []byte) (router.Embedding, error) {
-				emb, err := RequestEmbedding(imgData)
-				if err != nil {
-					return nil, err
-				}
-				result := make(router.Embedding, len(emb))
-				copy(result, emb)
-				return result, nil
-			},
-			FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
-				mainEmb := make(Embedding, len(emb))
-				copy(mainEmb, emb)
-				return keeper.FindClosestVinyl(mainEmb)
-			},
-			GetVinyl:   keeper.GetVinyl,
-			PlayRecord: keeper.PlayRecord,
-			GetUserID:  getUserID,
-		}))
+		router.HTMXTrigger("vinyl-registered")(
+			router.ScanCoverHTMLHandler(router.ScanHandlerParams{
+				GetEmbedding: func(imgData []byte) (router.Embedding, error) {
+					emb, err := RequestEmbedding(imgData)
+					if err != nil {
+						return nil, err
+					}
+					result := make(router.Embedding, len(emb))
+					copy(result, emb)
+					return result, nil
+				},
+				FindClosestVinylUnqiue: func(emb router.Embedding) vinyl.VinylUnique {
+					mainEmb := make(Embedding, len(emb))
+					copy(mainEmb, emb)
+					return keeper.FindClosestVinyl(mainEmb)
+				},
+				GetVinyl:   keeper.GetVinyl,
+				PlayRecord: keeper.PlayRecord,
+				GetUserID:  getUserID,
+			}),
+		).ServeHTTP)
 }
 
 func main() {
@@ -94,71 +96,133 @@ func main() {
 
 	keeper := k.(*keeper)
 
-	// getUserID returns the hardcoded user ID (0 for now, no auth)
+	// getUserID reads the selected user from request cookie.
 	getUserID := func(r *http.Request) int64 {
-		return 0
+		cookie, err := r.Cookie(values.CookieUserID)
+		if err != nil {
+			return 0
+		}
+		userID, err := strconv.ParseInt(cookie.Value, 10, 64)
+		if err != nil || userID <= 0 {
+			return 0
+		}
+		return userID
+	}
+
+	getSignedInUser := func(r *http.Request) *router.SignedInUser {
+		userID := getUserID(r)
+		if userID <= 0 {
+			return nil
+		}
+		user, err := keeper.GetUserByID(userID)
+		if err != nil || user == nil {
+			return nil
+		}
+		return &router.SignedInUser{UserID: user.UserID, UserName: user.UserName}
+	}
+
+	if err := waitForImageServiceHealth(); err != nil {
+		log.Fatalf("image service health check failed: %v", err)
 	}
 
 	r := router.NewRouter()
 
 	r.Route(http.MethodGet, values.EndpointHealth, router.HealthHandler)
 
-	staticSub, err := fs.Sub(staticFS, "router/assets/static")
+	assetsSub, err := fs.Sub(assetsFS, "router/assets")
 	if err != nil {
-		log.Fatalf("failed to create static fs: %v", err)
+		log.Fatalf("failed to create assets fs: %v", err)
 	}
 	r.Route(http.MethodGet,
-		values.EndpointAssets+values.EndpointStatic+"/{path...}",
+		values.EndpointAssets+"/{path...}",
 		http.StripPrefix(
-			values.EndpointAssets+values.EndpointStatic,
-			http.FileServer(http.FS(staticSub))).ServeHTTP)
+			values.EndpointAssets,
+			http.FileServer(http.FS(assetsSub))).ServeHTTP)
 
 	r.Route(http.MethodGet,
-		values.EndpointScanner,
-		router.ScannerPageHandler)
+		"/",
+		router.ScannerPageHandler(keeper.GetVinylIndex, getSignedInUser))
 
 	r.Route(http.MethodGet,
-		values.EndpointAlbums,
-		router.AlbumsPageHandler(keeper.GetVinylIndex))
+		"/scanner",
+		router.ScannerPageHandler(keeper.GetVinylIndex, getSignedInUser))
+
+	signInParams := router.SignInHandlerParams{
+		ListUsers:     keeper.ListUsers,
+		CreateUser:    keeper.CreateUser,
+		GetUserByID:   keeper.GetUserByID,
+		GetSignedInID: getUserID,
+	}
+
+	r.Route(http.MethodGet,
+		values.EndpointModal+"/all-vinyl",
+		router.ModalAllVinylHandler(keeper.GetVinylIndex))
+
+	r.Route(http.MethodGet,
+		values.EndpointModal+"/my-collection",
+		router.ModalMyCollectionHandler(keeper.GetVinylIndex))
+
+	r.Route(http.MethodGet,
+		values.EndpointModal+"/register",
+		router.ModalRegisterHandler())
+
+	r.Route(http.MethodGet,
+		values.EndpointModal+"/sign-in",
+		router.ModalSignInHandler(signInParams))
+
+	r.Route(http.MethodGet,
+		values.EndpointSignIn+values.EndpointButton,
+		router.SignInButtonHandler(signInParams))
+
+	r.Route(http.MethodGet,
+		values.EndpointSignIn+values.EndpointUsers,
+		router.SignInUsersHandler(signInParams))
+
+	r.Route(http.MethodPost,
+		values.EndpointSignIn+values.EndpointSubmit,
+		router.HTMXTrigger("user-signed-in")(
+			router.SignInSubmitHandler(signInParams),
+		).ServeHTTP)
+
+	r.Route(http.MethodPost,
+		values.EndpointSignIn+values.EndpointNew,
+		router.SignInNewHandler(signInParams))
 
 	r.Route(http.MethodGet,
 		values.EndpointAlbums+values.EndpointFilter,
 		router.AlbumsFilterHandler(keeper.AllVinyl, keeper.GetVinylIndex))
 
 	r.Route(http.MethodGet,
-		values.EndpointMyVinyl,
-		router.MyVinylPageHandler(keeper.GetVinylIndex, getUserID))
-
-	r.Route(http.MethodGet,
 		values.EndpointMyVinyl+values.EndpointFilter,
 		router.MyVinylFilterHandler(keeper.MyVinyl, keeper.GetVinylIndex, getUserID))
 
-	r.Route(http.MethodGet,
-		values.EndpointRegister,
-		router.RegisterPageHandler)
-
 	setEmbeddingRoutes(r, keeper, getUserID)
 
-	// Register submit (HTMX endpoint)
+	// Register submit (HTMX endpoint) — triggers vinyl-registered on success
 	r.Route(http.MethodGet,
 		values.EndpointRegister+values.EndpointSubmit,
-		router.RegisterSubmitHandler(router.RegisterHandlerParams{
-			RegisterVinyl: func(artist, album string) (vinyl.VinylUnique, error) {
-				params, err := RegisterUniqueVinylQueryParams(album, artist)
-				if err != nil {
-					return vinyl.VinylUnique{}, err
-				}
-				return keeper.RegisterVinylUnique(params)
-			},
-		}))
+		router.HTMXTrigger("vinyl-registered")(
+			router.RegisterSubmitHandler(router.RegisterHandlerParams{
+				RegisterVinyl: func(artist, album string) (vinyl.VinylUnique, error) {
+					params, err := RegisterUniqueVinylQueryParams(album, artist)
+					if err != nil {
+						return vinyl.VinylUnique{}, err
+					}
+					return keeper.RegisterVinylUnique(params)
+				},
+			}),
+		).ServeHTTP)
 
+	// Delete vinyl (HTMX endpoint) — triggers vinyl-registered on success
 	r.Route(http.MethodDelete,
 		values.EndpointDelete+"/"+values.PageParam(values.ParamVinylID),
-		router.DeleteVinylHandler(router.DeleteHandlerParams{
-			DeleteVinyl: func(vinylID int64) error {
-				return keeper.DeleteVinyl(vinylID)
-			},
-		}))
+		router.HTMXTrigger("vinyl-registered")(
+			router.DeleteVinylHandler(router.DeleteHandlerParams{
+				DeleteVinyl: func(vinylID int64) error {
+					return keeper.DeleteVinyl(vinylID)
+				},
+			}),
+		).ServeHTTP)
 
 	r.Route(http.MethodGet,
 		values.EndpointCover+"/"+values.PageParam(values.ParamVinylID),
@@ -170,11 +234,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to setup router: %v", err)
 	}
-
-	if err := waitForImageServiceHealth(); err != nil {
-		log.Fatalf("image service health check failed: %v", err)
-	}
-
 	addr := ":8080"
 	enableTLS := true
 	if raw := os.Getenv("ENABLE_TLS"); raw != "" {

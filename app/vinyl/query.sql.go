@@ -102,6 +102,17 @@ func (q *Queries) GetAllVinyls(ctx context.Context) ([]VinylUnique, error) {
 	return items, nil
 }
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT user_id, user_name, date_created FROM users WHERE user_id = ?
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, userID int64) (User, error) {
+	row := q.queryRow(ctx, q.getUserByIDStmt, getUserByID, userID)
+	var i User
+	err := row.Scan(&i.UserID, &i.UserName, &i.DateCreated)
+	return i, err
+}
+
 const getUserVinylPlays = `-- name: GetUserVinylPlays :many
 SELECT user_id, vinyl_id, plays, first_played, last_played FROM user_vinyl_plays WHERE user_id = ? ORDER BY last_played DESC
 `
@@ -122,6 +133,33 @@ func (q *Queries) GetUserVinylPlays(ctx context.Context, userID int64) ([]UserVi
 			&i.FirstPlayed,
 			&i.LastPlayed,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT user_id, user_name, date_created FROM users ORDER BY user_name ASC
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.query(ctx, q.listUsersStmt, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(&i.UserID, &i.UserName, &i.DateCreated); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

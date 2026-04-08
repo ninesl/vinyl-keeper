@@ -92,6 +92,29 @@ func (k *keeper) MyVinyl(userID int64) []vinyl.VinylWithPlayData {
 	return result
 }
 
+func (k *keeper) ListUsers() ([]vinyl.User, error) {
+	users, err := k.queries.ListUsers(k.ctx)
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (k *keeper) CreateUser(name string) (vinyl.User, error) {
+	return k.queries.CreateUser(k.ctx, strings.TrimSpace(name))
+}
+
+func (k *keeper) GetUserByID(userID int64) (*vinyl.User, error) {
+	user, err := k.queries.GetUserByID(k.ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (k *keeper) RegisterVinylUnique(args vinyl.RegisterVinylParams) (vinyl.VinylUnique, error) {
 	vinylUnique, err := k.queries.RegisterVinyl(k.ctx, args)
 	if err != nil {
@@ -464,6 +487,12 @@ func (k *keeper) initializeQueries(ctx context.Context) error {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("open sqlite %q: %w", dbPath, err)
+	}
+	// SQLite disables foreign key enforcement by default on every new connection.
+	// This must be re-applied each time the DB is opened, not just at schema creation.
+	if _, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		db.Close()
+		return fmt.Errorf("enable foreign keys: %w", err)
 	}
 	if isNew {
 		if _, err = db.ExecContext(ctx, schemaSQL); err != nil {

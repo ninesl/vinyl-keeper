@@ -1,5 +1,20 @@
 package ui
 
+import (
+	"fmt"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/button"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/checkbox"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dialog"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dropdown"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/icon"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/input"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/label"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/tabs"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/utils"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
+)
+
 templ Layout(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -8,19 +23,213 @@ templ Layout(title string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<title>{ title }</title>
 			<script src="/assets/static/htmx.js"></script>
-			<link rel="stylesheet" href="/assets/static/styles.css"/>
+			@checkbox.Script()
+			@dialog.Script()
+			@dropdown.Script()
+			@tabs.Script()
+			<link rel="stylesheet" href="/assets/css/output.css"/>
+			<link rel="stylesheet" href="/assets/css/styles.css"/>
 		</head>
-		<body>
+		<body class="min-h-screen bg-background text-foreground p-4 md:p-6">
 			{ children... }
 		</body>
 	</html>
 }
 
-templ Nav() {
-	<nav class="nav">
-		<a href="/scanner">Scanner</a>
-		<a href="/albums">All Albums</a>
-		<a href="/myvinyl">My Vinyl</a>
-		<a href="/register">Register</a>
+templ Nav(index *vinyl.VinylIndex, signedInUserName string) {
+	<nav class="pointer-events-auto mx-auto mb-6 flex w-full max-w-7xl items-center gap-2 rounded-lg border bg-card/80 p-3 backdrop-blur">
+		<div class="flex flex-wrap items-center gap-2">
+			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
+				"hx-get":    values.EndpointModal + "/all-vinyl",
+				"hx-target": "#" + values.IDModalZoneContent,
+				"hx-swap":   "innerHTML",
+			}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Disc3(icon.Props{Class: "size-4"})
+					<span>All Vinyl</span>
+				}
+			}
+			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
+				"hx-get":    values.EndpointModal + "/my-collection",
+				"hx-target": "#" + values.IDModalZoneContent,
+				"hx-swap":   "innerHTML",
+			}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Library(icon.Props{Class: "size-4"})
+					<span>My Collection</span>
+				}
+			}
+			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
+				"hx-get":    values.EndpointModal + "/register",
+				"hx-target": "#" + values.IDModalZoneContent,
+				"hx-swap":   "innerHTML",
+			}}) {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.Pen(icon.Props{Class: "size-4"})
+					<span>Register</span>
+				}
+			}
+		</div>
+		<div class="ml-auto">
+			@SignInButtonZone(signedInUserName)
+		</div>
 	</nav>
+	@dialog.Dialog(dialog.Props{ID: "modal-zone-dialog"}) {
+		@dialog.Content(dialog.ContentProps{Class: "w-[min(64rem,96vw)] max-h-[85vh] overflow-auto"}) {
+			<div
+				id={ values.IDModalZoneContent }
+				hx-get={ values.EndpointModal + "/all-vinyl" }
+				hx-swap="innerHTML"
+				hx-trigger="load"
+			></div>
+		}
+	}
+}
+
+templ SignInButtonZone(userName string) {
+	<div
+		id={ values.IDSignInButtonZone }
+		hx-get={ values.EndpointSignIn + values.EndpointButton }
+		hx-trigger="user-signed-in from:body"
+		hx-swap="outerHTML"
+	>
+		@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
+			"hx-get":    values.EndpointModal + "/sign-in",
+			"hx-target": "#" + values.IDModalZoneContent,
+			"hx-swap":   "innerHTML",
+		}}) {
+			if userName == "" {
+				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
+					@icon.UserRoundX(icon.Props{Class: "size-4"})
+					<span>Sign In</span>
+				}
+			} else {
+				@button.Button(button.Props{Variant: button.VariantSecondary, Size: button.SizeSm}) {
+					@icon.User(icon.Props{Class: "size-4"})
+					<span>{ userName }</span>
+				}
+			}
+		}
+	</div>
+}
+
+templ SignInPanel() {
+	<div class="space-y-4">
+		<div>
+			<h3 class="text-lg font-semibold">Sign In</h3>
+			<p class="text-sm text-muted-foreground">Pick an existing user or create a new one.</p>
+		</div>
+		<div id={ values.IDSignInErrors }></div>
+		<div
+			id={ values.IDSignInUsersList }
+			class="space-y-2"
+			hx-get={ values.EndpointSignIn + values.EndpointUsers }
+			hx-trigger="load, user-signed-in from:body"
+			hx-swap="innerHTML"
+		></div>
+		<form
+			hx-post={ values.EndpointSignIn + values.EndpointNew }
+			hx-target={ "#" + values.IDSignInUsersList }
+			hx-swap="beforeend"
+			class="flex flex-col gap-2 sm:flex-row"
+		>
+			@input.Input(input.Props{
+				Name:        values.QueryUserName,
+				Placeholder: "new user",
+				Required:    true,
+				Class:       "sm:flex-1",
+			})
+			@button.Button(button.Props{Type: "submit"}) {
+				Add User
+			}
+		</form>
+	</div>
+}
+
+templ SignInUsersList(users []vinyl.User, signedInUserID int64) {
+	if len(users) == 0 {
+		<div class="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No users yet. Create one below.</div>
+	}
+	for _, user := range users {
+		@SignInUserRow(user, signedInUserID)
+	}
+}
+
+templ SignInUserRow(user vinyl.User, signedInUserID int64) {
+	<div class="flex items-center justify-between gap-2 rounded-md border bg-card p-2">
+		<div class="text-sm font-medium">{ user.UserName }</div>
+		@button.Button(button.Props{
+			Variant: func() button.Variant {
+				if user.UserID == signedInUserID {
+					return button.VariantSecondary
+				}
+				return button.VariantOutline
+			}(),
+			Size: button.SizeSm,
+			Attributes: templ.Attributes{
+				"hx-post":   values.EndpointSignIn + values.EndpointSubmit,
+				"hx-vals":   fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
+				"hx-swap":   "none",
+				"hx-target": "#" + values.IDSignInErrors,
+			},
+		}) {
+			if user.UserID == signedInUserID {
+				@icon.User(icon.Props{Class: "size-4"})
+				<span>Signed In</span>
+			} else {
+				@icon.User(icon.Props{Class: "size-4"})
+				<span>Sign In</span>
+			}
+		}
+	</div>
+
+}
+
+templ VinylRegisterForm() {
+	{{ var id = utils.RandomID() }}
+	<div class="p-4 space-y-4">
+		<div>
+			<h3 class="text-lg font-semibold">Register New Vinyl</h3>
+		</div>
+		<form
+			hx-get={ values.EndpointRegister + values.EndpointSubmit }
+			hx-target={ "#" + values.IDResults }
+			hx-swap="afterbegin"
+			hx-indicator="#loading"
+			class="flex flex-col gap-4"
+		>
+			<div class="flex flex-col gap-2">
+				@label.Label(label.Props{
+					For: "artist" + id,
+				}) {
+					Artist
+				}
+				@input.Input(input.Props{
+					ID:          "artist" + id,
+					Name:        values.QueryArtist,
+					Placeholder: "e.g., Abbey Road",
+					Required:    true,
+				})
+			</div>
+			<div class="flex flex-col gap-2">
+				@label.Label(label.Props{
+					For: "album" + id,
+				}) {
+					Album
+				}
+				@input.Input(input.Props{
+					ID:          "album" + id,
+					Name:        values.QueryAlbum,
+					Placeholder: "e.g., The Beatles",
+					Required:    true,
+				})
+			</div>
+			@button.Button(button.Props{
+				Type: "submit",
+			}) {
+				Register Vinyl <span id="loading" class="htmx-indicator">...</span>
+			}
+		</form>
+		<div id={ values.IDResults }></div>
+	</div>
 }

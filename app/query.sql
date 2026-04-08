@@ -2,6 +2,12 @@
 INSERT INTO users(user_name) VALUES (?)
 RETURNING *;
 
+-- name: ListUsers :many
+SELECT * FROM users ORDER BY user_name ASC;
+
+-- name: GetUserByID :one
+SELECT * FROM users WHERE user_id = ?;
+
 -- name: RegisterVinyl :one
 INSERT INTO vinyl_unique(
     vinyl_title, vinyl_artist, vinyl_pressing_year,
