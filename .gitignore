@@ -1,3 +1,4 @@
+app/tmp/
 *.md
 *_templ.go
 *.mp4
