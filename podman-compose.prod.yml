@@ -4,30 +4,30 @@ services:
   app:
     image: vinyl-keeper:app
     environment:
-      DB_PATH: /data/vinylkeeper.db
-      IMAGE_SERVICE_HOST: image-service
-      IMAGE_SERVICE_PORT: "8081"
-      IMAGE_SERVICE_ENDPOINT: /embed
-      IMAGE_SERVICE_HEALTH_ENDPOINT: ${IMAGE_SERVICE_HEALTH_ENDPOINT:-/health}
-      IMAGE_SERVICE_WAIT_RETRIES: "${IMAGE_SERVICE_WAIT_RETRIES:-60}"
-      IMAGE_SERVICE_WAIT_SECONDS: "${IMAGE_SERVICE_WAIT_SECONDS:-1}"
-      ENABLE_TLS: "false"
+      DB_PATH: ${DB_PATH:-/data/vinylkeeper.db}
+      IMAGE_SERVICE_HOST: ${IMAGE_SERVICE_HOST:-image-service}
+      IMAGE_SERVICE_PORT: "${IMAGE_SERVICE_PORT:-8081}"
+      IMAGE_SERVICE_ENDPOINT: ${IMAGE_SERVICE_ENDPOINT:-/embed}
+      IMAGE_SERVICE_HEALTH_ENDPOINT: ${IMAGE_SERVICE_HEALTH_ENDPOINT?IMAGE_SERVICE_HEALTH_ENDPOINT is required}
+      IMAGE_SERVICE_WAIT_RETRIES: "${IMAGE_SERVICE_WAIT_RETRIES?IMAGE_SERVICE_WAIT_RETRIES is required}"
+      IMAGE_SERVICE_WAIT_SECONDS: "${IMAGE_SERVICE_WAIT_SECONDS?IMAGE_SERVICE_WAIT_SECONDS is required}"
+      ENABLE_TLS: "${ENABLE_TLS:-false}"
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8080}:8080"
     volumes:
-      - /srv/vinyl-keeper/data:/data
+      - ./data:/data
     depends_on:
       - image-service
     restart: unless-stopped
 
   image-service:
     image: vinyl-keeper:image-service
-    command: ["uv", "run", "uvicorn", "image_service:app", "--host", "0.0.0.0", "--port", "8081"]
+    command: ["uv", "run", "uvicorn", "image_service:app", "--host", "${IMAGE_SERVICE_BIND_HOST:-0.0.0.0}", "--port", "${IMAGE_SERVICE_PORT:-8081}"]
     environment:
-      EMBED_MODEL_PATH: /models/ViT-B-32__openai/visual/model.onnx
-      EMBED_MODEL_FAMILY: clip
-      EMBED_DIM: "512"
-      EMBED_IMAGE_SIZE: "224"
+      EMBED_MODEL_PATH: ${EMBED_MODEL_PATH_PROD?EMBED_MODEL_PATH_PROD is required}
+      EMBED_MODEL_FAMILY: ${EMBED_MODEL_FAMILY?EMBED_MODEL_FAMILY is required}
+      EMBED_DIM: "${EMBED_DIM?EMBED_DIM is required}"
+      EMBED_IMAGE_SIZE: "${EMBED_IMAGE_SIZE?EMBED_IMAGE_SIZE is required}"
     volumes:
-      - /srv/vinyl-keeper/models:/models:ro
+      - ./models:/models:ro
     restart: unless-stopped

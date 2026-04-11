@@ -10,7 +10,6 @@ RUN uv sync --frozen --no-install-project
 
 # Copy application code
 COPY image_service.py ./image_service.py
-COPY models ./models
 
 # Install project into the environment
 RUN uv sync --frozen
