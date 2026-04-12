@@ -1,0 +1,22 @@
+package values
+
+// Endpoint constants for HTTP routes
+const (
+	EndpointHealth   = "/health"
+	EndpointAlbums   = "/albums"
+	EndpointMyVinyl  = "/myvinyl"
+	EndpointSearch   = "/search"
+	EndpointCover    = "/cover"
+	EndpointDelete   = "/delete"
+	EndpointAssets   = "/assets"
+	EndpointRegister = "/register"
+	EndpointModal    = "/modal"
+	EndpointSignIn   = "/signin"
+	EndpointUsers    = "/users"
+	EndpointButton   = "/button"
+	EndpointSubmit   = "/submit"
+	EndpointHTMX     = "/htmx"
+	EndpointFilter   = "/filter"
+	EndpointNew      = "/new"
+	EndpointSignOut  = "/signout"
+)
