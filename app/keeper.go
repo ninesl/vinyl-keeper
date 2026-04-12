@@ -416,6 +416,18 @@ func (k *keeper) DeleteVinyl(vinylID int64) error {
 	return nil
 }
 
+func (k *keeper) DeleteUser(userID int64) error {
+	if err := k.queries.DeleteUser(k.ctx, userID); err != nil {
+		return fmt.Errorf("failed to delete user %d from database: %w", userID, err)
+	}
+
+	k.mu.Lock()
+	delete(k.userNumPlays, userID)
+	k.mu.Unlock()
+
+	return nil
+}
+
 func (k *keeper) initKeeper(ctx context.Context) error {
 	k.ctx = ctx
 	// Initialize DB and queries

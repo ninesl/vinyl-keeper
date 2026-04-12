@@ -21,6 +21,15 @@ func (q *Queries) CreateUser(ctx context.Context, userName string) (User, error)
 	return i, err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, userID int64) error {
+	_, err := q.exec(ctx, q.deleteUserStmt, deleteUser, userID)
+	return err
+}
+
 const deleteVinyl = `-- name: DeleteVinyl :exec
 DELETE FROM vinyl_unique WHERE vinyl_id = ?
 `

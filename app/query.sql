@@ -52,3 +52,6 @@ SELECT * FROM user_vinyl_plays;
 
 -- name: DeleteVinyl :exec
 DELETE FROM vinyl_unique WHERE vinyl_id = ?;
+
+-- name: DeleteUser :exec
+DELETE FROM users WHERE user_id = ?;

@@ -27,6 +27,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
 	}
+	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
+	}
 	if q.deleteVinylStmt, err = db.PrepareContext(ctx, deleteVinyl); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteVinyl: %w", err)
 	}
@@ -62,6 +65,11 @@ func (q *Queries) Close() error {
 	if q.createUserStmt != nil {
 		if cerr := q.createUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteUserStmt != nil {
+		if cerr := q.deleteUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteUserStmt: %w", cerr)
 		}
 	}
 	if q.deleteVinylStmt != nil {
@@ -149,6 +157,7 @@ type Queries struct {
 	db                        DBTX
 	tx                        *sql.Tx
 	createUserStmt            *sql.Stmt
+	deleteUserStmt            *sql.Stmt
 	deleteVinylStmt           *sql.Stmt
 	getAllUserVinylPlaysStmt  *sql.Stmt
 	getAllVinylsStmt          *sql.Stmt
@@ -165,6 +174,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                        tx,
 		tx:                        tx,
 		createUserStmt:            q.createUserStmt,
+		deleteUserStmt:            q.deleteUserStmt,
 		deleteVinylStmt:           q.deleteVinylStmt,
 		getAllUserVinylPlaysStmt:  q.getAllUserVinylPlaysStmt,
 		getAllVinylsStmt:          q.getAllVinylsStmt,

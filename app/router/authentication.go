@@ -92,8 +92,8 @@ func SignInButtonHandler(k UserGetter) http.HandlerFunc {
 	}
 }
 
-// SignInCreateUserHandler creates a new user
-func SignInCreateUserHandler(k UserCreator) http.HandlerFunc {
+// SignInCreateUserHandler creates a new user and returns the refreshed users list.
+func SignInCreateUserHandler(k UserCreatorLister) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
 
@@ -104,15 +104,68 @@ func SignInCreateUserHandler(k UserCreator) http.HandlerFunc {
 			return
 		}
 
-		created, err := k.CreateUser(name)
+		_, err := k.CreateUser(name)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			parts.ErrorMessage("Could not create user (name may already exist)").Render(r.Context(), w)
 			return
 		}
 
+		users, err := k.ListUsers()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to load users").Render(r.Context(), w)
+			return
+		}
+
 		signedInID := GetUserID(r)
-		ui.SignInUserRow(created, signedInID).Render(r.Context(), w)
+		ui.SignInUsersList(users, signedInID).Render(r.Context(), w)
+	}
+}
+
+// SignInDeleteUserHandler deletes a user and returns the refreshed users list.
+func SignInDeleteUserHandler(k UserDeleterLister) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		userIDStr := r.FormValue(values.QueryUserID)
+		if userIDStr == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Missing user ID").Render(r.Context(), w)
+			return
+		}
+
+		userID, err := strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil || userID <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Invalid user ID").Render(r.Context(), w)
+			return
+		}
+
+		signedInID := GetUserID(r)
+		deletingSignedInUser := signedInID == userID
+
+		if err := k.DeleteUser(userID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to delete user").Render(r.Context(), w)
+			return
+		}
+
+		if deletingSignedInUser {
+			auth.ClearSessionCookie(w)
+			w.Header().Set(values.HeaderHXTrigger, values.EventUserSignedOut)
+			ui.SignInPanel("", true).Render(r.Context(), w)
+			return
+		}
+
+		users, err := k.ListUsers()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to load users").Render(r.Context(), w)
+			return
+		}
+
+		ui.SignInUsersList(users, signedInID).Render(r.Context(), w)
 	}
 }
 
@@ -173,7 +226,7 @@ func SignOutHandler() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 
 		// Return updated sign-in panel (anonymous)
-		ui.SignInPanel("").Render(r.Context(), w)
+		ui.SignInPanel("", false).Render(r.Context(), w)
 	}
 }
 
@@ -182,7 +235,7 @@ func SignInPanelHandler(getUserName func(*http.Request) string) http.HandlerFunc
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
 		userName := getUserName(r)
-		ui.SignInPanel(userName).Render(r.Context(), w)
+		ui.SignInPanel(userName, false).Render(r.Context(), w)
 	}
 }
 
@@ -197,4 +250,18 @@ type UserGetter interface {
 
 type UserCreator interface {
 	CreateUser(name string) (vinyl.User, error)
+}
+
+type UserDeleter interface {
+	DeleteUser(userID int64) error
+}
+
+type UserCreatorLister interface {
+	UserCreator
+	UserLister
+}
+
+type UserDeleterLister interface {
+	UserDeleter
+	UserLister
 }

@@ -165,6 +165,10 @@ func main() {
 		values.EndpointSignIn+values.EndpointNew,
 		router.SignInCreateUserHandler(keeper))
 
+	r.Route(http.MethodPost,
+		values.EndpointSignIn+values.EndpointUserDelete,
+		router.SignInDeleteUserHandler(keeper))
+
 	// Sign-out route
 	r.Route(http.MethodPost,
 		values.EndpointSignIn+values.EndpointSignOut,

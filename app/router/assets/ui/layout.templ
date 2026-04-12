@@ -113,8 +113,8 @@ templ SignInButtonZone(userName string) {
 	</div>
 }
 
-templ SignInPanel(signedInUserName string) {
-	<div class="space-y-4">
+templ SignInPanel(signedInUserName string, oob bool) {
+	<div if oob { id={ values.IDModalZoneContent } hx-swap-oob="innerHTML" } class="space-y-4">
 		<div class="flex items-center justify-between">
 			<div>
 				<h3 class="text-lg font-semibold">Sign In</h3>
@@ -146,7 +146,7 @@ templ SignInPanel(signedInUserName string) {
 		<form
 			hx-post={ values.EndpointSignIn + values.EndpointNew }
 			hx-target={ "#" + values.IDSignInUsersList }
-			hx-swap="beforeend"
+			hx-swap="innerHTML"
 			class="flex flex-col gap-2 sm:flex-row"
 		>
 			@input.Input(input.Props{
@@ -174,32 +174,60 @@ templ SignInUsersList(users []vinyl.User, signedInUserID int64) {
 templ SignInUserRow(user vinyl.User, signedInUserID int64) {
 	<div class="flex items-center justify-between gap-2 rounded-md border bg-card p-2">
 		<div class="text-sm font-medium">{ user.UserName }</div>
-		if user.UserID == signedInUserID {
-			// Current user - show disabled button as indicator
-			@button.Button(button.Props{
-				Variant: button.VariantSecondary,
-				Size: button.SizeSm,
-				Disabled: true,
-			}) {
-				@icon.User(icon.Props{Class: "size-4"})
-				<span>Signed In</span>
+		<div class="flex items-center gap-2">
+			if user.UserID == signedInUserID {
+				@button.Button(button.Props{
+					Variant: button.VariantSecondary,
+					Size: button.SizeSm,
+					Disabled: true,
+				}) {
+					@icon.User(icon.Props{Class: "size-4"})
+					<span>Signed In</span>
+				}
+				@button.Button(button.Props{
+					Variant: button.VariantDestructive,
+					Size: button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-post":    values.EndpointSignIn + values.EndpointUserDelete,
+						"hx-vals":    fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
+						"hx-target":  "#" + values.IDSignInUsersList,
+						"hx-swap":    "innerHTML",
+						"hx-confirm": fmt.Sprintf("Delete user '%s' and sign out?", user.UserName),
+					},
+				}) {
+					@icon.Trash2(icon.Props{Class: "size-4"})
+					<span>Delete</span>
+				}
+			} else {
+				@button.Button(button.Props{
+					Variant: button.VariantOutline,
+					Size: button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-post":   values.EndpointSignIn + values.EndpointSubmit,
+						"hx-vals":   fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
+						"hx-swap":   "none",
+						"hx-target": "#" + values.IDSignInErrors,
+					},
+				}) {
+					@icon.User(icon.Props{Class: "size-4"})
+					<span>Sign In</span>
+				}
 			}
-		} else {
-			// Other user - clickable sign in button
 			@button.Button(button.Props{
-				Variant: button.VariantOutline,
+				Variant: button.VariantDestructive,
 				Size: button.SizeSm,
 				Attributes: templ.Attributes{
-					"hx-post":   values.EndpointSignIn + values.EndpointSubmit,
-					"hx-vals":   fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
-					"hx-swap":   "none",
-					"hx-target": "#" + values.IDSignInErrors,
+					"hx-post":    values.EndpointSignIn + values.EndpointUserDelete,
+					"hx-vals":    fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
+					"hx-target":  "#" + values.IDSignInUsersList,
+					"hx-swap":    "innerHTML",
+					"hx-confirm": fmt.Sprintf("Delete user '%s'?", user.UserName),
 				},
 			}) {
-				@icon.User(icon.Props{Class: "size-4"})
-				<span>Sign In</span>
+				@icon.Trash2(icon.Props{Class: "size-4"})
+				<span>Delete</span>
 			}
-		}
+		</div>
 	</div>
 }
 
