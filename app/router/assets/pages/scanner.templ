@@ -1,13 +1,15 @@
 package pages
 
 import (
+	"fmt"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
+	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/button"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dialog"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/icon"
-	"github.com/ninesl/vinyl-keeper/app/vinyl"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
 )
 
-templ ScannerPage(title string, index *vinyl.VinylIndex, signedInUserName string) {
+templ ScannerPage(title string, signedInUserName string, signedIn bool) {
 	@ui.Layout(title) {
 		<!-- Fixed camera background layer -->
 		<div id="video-container" class="fixed inset-0 z-0 hidden overflow-hidden bg-black">
@@ -17,24 +19,10 @@ templ ScannerPage(title string, index *vinyl.VinylIndex, signedInUserName string
 		<canvas id="canvas" class="hidden"></canvas>
 		<!-- Overlay UI layer -->
 		<div id="scanner-overlay" class="relative z-10">
-			@ui.Nav(index, signedInUserName)
+			@ui.Nav(signedInUserName)
 			<div id="scan-action-zone" class="fixed left-1/2 z-40 -translate-x-1/2" style="top: calc(50% + 175px + 1.5rem);">
 				<div class="flex flex-col items-center gap-4">
-					@dialog.Trigger(dialog.TriggerProps{
-						For: "modal-zone-dialog",
-						Attributes: templ.Attributes{
-							"onclick": "handleScanClick(event)",
-						},
-					}) {
-						<button
-							id="scan-btn"
-							type="button"
-							class="pointer-events-auto hidden size-20 rounded-full border border-primary/50 bg-background/85 text-primary shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md transition-all hover:scale-105 hover:border-primary active:scale-95 flex items-center justify-center cursor-pointer"
-						>
-							@icon.ScanSearch(icon.Props{Class: "size-8 drop-shadow-sm"})
-							<span class="sr-only">Scan</span>
-						</button>
-					}
+					@ScannerButtonShell(signedIn, false)
 					<button
 						id="camera-toggle-btn"
 						type="button"
@@ -56,13 +44,53 @@ templ ScannerPage(title string, index *vinyl.VinylIndex, signedInUserName string
 	}
 }
 
+templ ScannerButtonShell(signedIn bool, oob bool) {
+	{{
+		attrs := templ.Attributes{
+			"hx-get":     values.EndpointSearch + values.EndpointButton,
+			"hx-swap":    "innerHTML",
+			"hx-trigger": fmt.Sprintf("%s from:body, %s from:body", values.EventUserSignedIn, values.EventUserSignedOut),
+		}
+		if oob {
+			attrs["hx-swap-oob"] = true
+		}
+	}}
+	<div
+		id={ values.IDScanButtonShell }
+		{ attrs... }
+	>
+		@ScannerButton(signedIn)
+	</div>
+}
+
+templ ScannerButton(signedIn bool) {
+	{{
+		dProps := dialog.TriggerProps{
+			ID: "scan-btn",
+		}
+		btnProps := button.Props{}
+		if signedIn {
+			btnProps.Variant = button.VariantSecondary
+			dProps.For = "modal-zone-dialog"
+			dProps.Attributes = templ.Attributes{
+				"hx-target": "#" + values.IDModalZoneContent,
+				"hx-swap":   "innerHTML",
+				"onclick":   "handleScanClick(event)",
+			}
+		}
+	}}
+	@dialog.Trigger(dProps) {
+		@button.Button(btnProps) {
+			@icon.ScanSearch(icon.Props{Class: "size-8 drop-shadow-sm"})
+		}
+	}
+}
+
 templ ScannerScript() {
 	<script>
     const video = document.getElementById('camera');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const scanBtn = document.getElementById('scan-btn');
-    const defaultScanBtnHtml = scanBtn.innerHTML;
     const modalZoneContent = document.getElementById('modal-zone-content');
     const searchEndpoint = '/search/htmx';
     const videoContainer = document.getElementById('video-container');
@@ -121,7 +149,8 @@ templ ScannerScript() {
         
         // Show video, scan button, and camera toggle
         videoContainer.classList.remove('hidden');
-        scanBtn.classList.remove('hidden');
+        const scanBtn = document.getElementById('scan-btn');
+        if (scanBtn) scanBtn.classList.remove('hidden');
         cameraToggleBtn.classList.remove('hidden');
         
         console.log('Camera enabled successfully');
@@ -195,6 +224,7 @@ templ ScannerScript() {
 
     // Toggle camera on/off
     function toggleCamera() {
+      const scanBtn = document.getElementById('scan-btn');
       if (cameraEnabled) {
         // Turn off: stop tracks, hide video
         if (video.srcObject) {
@@ -202,7 +232,7 @@ templ ScannerScript() {
           video.srcObject = null;
         }
         videoContainer.classList.add('hidden');
-        scanBtn.classList.add('hidden');
+        if (scanBtn) scanBtn.classList.add('hidden');
         cameraIconOn.classList.add('hidden');
         cameraIconOff.classList.remove('hidden');
         cameraToggleBtn.classList.remove('border-primary/50', 'bg-background/85', 'text-primary');
@@ -221,8 +251,12 @@ templ ScannerScript() {
 
     // Handle scan button click - dialog trigger will open modal, we just do the scan
     async function handleScanClick(event) {
+      const scanBtn = document.getElementById('scan-btn');
+      if (!scanBtn) return;
+      
       // Let dialog trigger handle opening the modal naturally
       // We just capture and submit the frame
+      const defaultScanBtnHtml = scanBtn.innerHTML;
       
 				scanBtn.disabled = true;
 				scanBtn.classList.add('animate-pulse');

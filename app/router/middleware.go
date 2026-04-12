@@ -1,9 +1,14 @@
 package router
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/ninesl/vinyl-keeper/app/auth"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
+	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
 type responseWriter struct {
@@ -41,48 +46,50 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// htmxTriggerWriter injects an HX-Trigger header before the first write
-// on any 2xx response, merging with any existing HX-Trigger value.
-type htmxTriggerWriter struct {
-	http.ResponseWriter
-	event    string
-	wroteHdr bool
+func SetHXTrigger(w http.ResponseWriter, event string) {
+	h := w.Header()
+	if existing := h.Get(values.HeaderHXTrigger); existing != "" {
+		h.Set(values.HeaderHXTrigger, existing+", "+event)
+		return
+	}
+	h.Set(values.HeaderHXTrigger, event)
 }
 
-func (tw *htmxTriggerWriter) WriteHeader(code int) {
-	if !tw.wroteHdr {
-		tw.wroteHdr = true
-		if code >= 200 && code < 300 {
-			tw.injectTrigger()
+// contextKey is a private type for context keys to avoid collisions
+type contextKey int
+
+const (
+	// userContextKey is used to store the authenticated user in request context
+	userContextKey contextKey = iota
+)
+
+// AuthMiddleware extracts the user session and adds it to the request context
+// This allows all downstream handlers to access the authenticated user via GetUserFromContext
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sessionUser, err := auth.GetSessionUser(r)
+		if err != nil {
+			// Log error but continue as anonymous
+			log.Printf("[Auth] Error reading session: %v", err)
 		}
-	}
-	tw.ResponseWriter.WriteHeader(code)
+
+		if sessionUser != nil {
+			user := &vinyl.User{
+				UserID:   sessionUser.UserID,
+				UserName: sessionUser.Username,
+			}
+			r = r.WithContext(context.WithValue(r.Context(), userContextKey, user))
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
-func (tw *htmxTriggerWriter) Write(b []byte) (int, error) {
-	if !tw.wroteHdr {
-		tw.wroteHdr = true
-		tw.injectTrigger() // implicit 200
+// GetUserFromContext extracts the authenticated user from the request context
+// Returns nil if no user is authenticated
+func GetUserFromContext(ctx context.Context) *vinyl.User {
+	if user, ok := ctx.Value(userContextKey).(*vinyl.User); ok {
+		return user
 	}
-	return tw.ResponseWriter.Write(b)
-}
-
-func (tw *htmxTriggerWriter) injectTrigger() {
-	h := tw.ResponseWriter.Header()
-	if existing := h.Get("HX-Trigger"); existing != "" {
-		h.Set("HX-Trigger", existing+", "+tw.event)
-	} else {
-		h.Set("HX-Trigger", tw.event)
-	}
-}
-
-// HTMXTrigger returns middleware that appends the given event name to the
-// HX-Trigger response header on every 2xx response from the wrapped handler.
-// Wrap any mutating endpoint with this to broadcast a client-side event.
-func HTMXTrigger(event string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(&htmxTriggerWriter{ResponseWriter: w, event: event}, r)
-		})
-	}
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/a-h/templ"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/pages"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/parts"
@@ -23,7 +24,6 @@ const ConfidenceThreshold = 0.80 // 80%
 // parseFilterCriteria extracts filter criteria from query parameters
 func parseFilterCriteria(r *http.Request) vinyl.FilterCriteria {
 	query := r.URL.Query()
-
 	return vinyl.FilterCriteria{
 		Artist: query.Get(values.QueryArtist),
 		Genres: nonEmptyValues(query[values.QueryGenre]), // supports multiple values
@@ -60,155 +60,51 @@ type SignedInUser struct {
 	UserName string
 }
 
+func RenderHandler(component templ.Component) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+		if err := component.Render(r.Context(), w); err != nil {
+			http.Error(w, "failed to render html", http.StatusInternalServerError)
+		}
+	}
+}
+
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
 }
 
-func ScannerPageHandler(getIndex func() *vinyl.VinylIndex, getSignedInUser func(*http.Request) *SignedInUser) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		index := getIndex()
-		signedIn := getSignedInUser(r)
-		if signedIn == nil {
-			pages.ScannerPage(values.TitleScanner, index, "").Render(r.Context(), w)
-			return
-		}
-		pages.ScannerPage(values.TitleScanner, index, signedIn.UserName).Render(r.Context(), w)
-	}
-}
-
-func ModalAllVinylHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
+func ScanButtonHandler(isSignedIn func(*http.Request) bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
-		ui.FilterPanel(values.EndpointAlbums+values.EndpointFilter, getIndex(), "all-vinyl-scope", "all-vinyl-zone", "all-vinyl-filter-artist").Render(r.Context(), w)
+		signedIn := isSignedIn(r)
+		pages.ScannerButtonShell(signedIn, true).Render(r.Context(), w)
 	}
 }
 
-func ModalMyCollectionHandler(getIndex func() *vinyl.VinylIndex) http.HandlerFunc {
+func ScannerPageHandler(
+	getIndex func() *vinyl.VinylIndex,
+	isSignedIn func(*http.Request) bool,
+	getUserName func(*http.Request) string,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-		ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, getIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist").Render(r.Context(), w)
+		_ = getIndex() // index loaded for side effects if needed
+		signedIn := isSignedIn(r)
+		userName := getUserName(r)
+		pages.ScannerPage(values.TitleScanner, userName, signedIn).Render(r.Context(), w)
 	}
 }
 
-func ModalRegisterHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-		ui.VinylRegisterForm().Render(r.Context(), w)
-	}
+func ModalAllVinylHandler(
+	getIndex func() *vinyl.VinylIndex,
+) http.HandlerFunc {
+	return RenderHandler(ui.FilterPanel(values.EndpointAlbums+values.EndpointFilter, getIndex(), "all-vinyl-scope", "all-vinyl-zone", "all-vinyl-filter-artist"))
 }
 
-type SignInHandlerParams struct {
-	ListUsers     func() ([]vinyl.User, error)
-	CreateUser    func(string) (vinyl.User, error)
-	GetUserByID   func(int64) (*vinyl.User, error)
-	GetSignedInID func(*http.Request) int64
-}
-
-func ModalSignInHandler(params SignInHandlerParams) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-		ui.SignInPanel().Render(r.Context(), w)
-	}
-}
-
-func SignInUsersHandler(params SignInHandlerParams) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-
-		users, err := params.ListUsers()
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			parts.ErrorMessage("Failed to load users").Render(r.Context(), w)
-			return
-		}
-
-		signedInID := params.GetSignedInID(r)
-		ui.SignInUsersList(users, signedInID).Render(r.Context(), w)
-	}
-}
-
-func SignInButtonHandler(params SignInHandlerParams) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-
-		signedInID := params.GetSignedInID(r)
-		if signedInID <= 0 {
-			ui.SignInButtonZone("").Render(r.Context(), w)
-			return
-		}
-
-		user, err := params.GetUserByID(signedInID)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			parts.ErrorMessage("Failed to load signed-in user").Render(r.Context(), w)
-			return
-		}
-		if user == nil {
-			ui.SignInButtonZone("").Render(r.Context(), w)
-			return
-		}
-
-		ui.SignInButtonZone(user.UserName).Render(r.Context(), w)
-	}
-}
-
-func SignInNewHandler(params SignInHandlerParams) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-
-		name := r.FormValue(values.QueryUserName)
-		if name == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			parts.ErrorMessage("Missing user name").Render(r.Context(), w)
-			return
-		}
-
-		created, err := params.CreateUser(name)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			parts.ErrorMessage("Could not create user (name may already exist)").Render(r.Context(), w)
-			return
-		}
-
-		signedInID := params.GetSignedInID(r)
-		ui.SignInUserRow(created, signedInID).Render(r.Context(), w)
-	}
-}
-
-func SignInSubmitHandler(params SignInHandlerParams) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", values.ContentTypeHTML)
-
-		userIDStr := r.FormValue(values.QueryUserID)
-		if userIDStr == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			parts.ErrorMessage("Missing user ID").Render(r.Context(), w)
-			return
-		}
-
-		userID, err := strconv.ParseInt(userIDStr, 10, 64)
-		if err != nil || userID <= 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			parts.ErrorMessage("Invalid user ID").Render(r.Context(), w)
-			return
-		}
-
-		user, err := params.GetUserByID(userID)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			parts.ErrorMessage("Failed to sign in").Render(r.Context(), w)
-			return
-		}
-		if user == nil {
-			w.WriteHeader(http.StatusNotFound)
-			parts.ErrorMessage("User not found").Render(r.Context(), w)
-			return
-		}
-
-		setUserCookie(w, user.UserID)
-		w.WriteHeader(http.StatusOK)
-	}
+func ModalMyCollectionHandler(
+	getIndex func() *vinyl.VinylIndex,
+) http.HandlerFunc {
+	return RenderHandler(ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, getIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist"))
 }
 
 func setUserCookie(w http.ResponseWriter, userID int64) {
@@ -276,6 +172,8 @@ func ScanCoverHandler(params ScanHandlerParams) http.HandlerFunc {
 			http.Error(w, "invalid JPEG image", http.StatusBadRequest)
 			return
 		}
+
+		// ensure jpeg is correct size??
 		embedding, err := params.GetEmbedding(body)
 		if err != nil {
 			http.Error(w, "failed to get embedding: "+err.Error(), http.StatusInternalServerError)
@@ -403,6 +301,7 @@ func renderAcceptedScanResult(w http.ResponseWriter, r *http.Request, params Sca
 			}
 		}
 	}
+	SetHXTrigger(w, values.EventVinylRegistered)
 	pages.ScanResultCard(vinylResult, similarityPercent).Render(r.Context(), w)
 }
 
@@ -430,13 +329,9 @@ func embeddingFromBlob(b []byte) (Embedding, error) {
 	for i := range emb {
 		bits := uint64(b[i*8]) | uint64(b[i*8+1])<<8 | uint64(b[i*8+2])<<16 | uint64(b[i*8+3])<<24 |
 			uint64(b[i*8+4])<<32 | uint64(b[i*8+5])<<40 | uint64(b[i*8+6])<<48 | uint64(b[i*8+7])<<56
-		emb[i] = float64frombits(bits)
+		emb[i] = math.Float64frombits(bits)
 	}
 	return emb, nil
-}
-
-func float64frombits(b uint64) float64 {
-	return math.Float64frombits(b)
 }
 
 type RegisterHandlerParams struct {
@@ -469,6 +364,7 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 			return
 		}
 
+		SetHXTrigger(w, values.EventVinylRegistered)
 		pages.AlbumCard(vinylUnique).Render(r.Context(), w)
 	}
 }
@@ -501,8 +397,9 @@ func DeleteVinylHandler(params DeleteHandlerParams) http.HandlerFunc {
 			return
 		}
 
+		//SetHXTrigger(w, values.EventVinylRegistered)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(``)) // Empty response - HTMX will remove element
+		//w.Write([]byte(``)) // Empty response - HTMX will remove element
 	}
 }
 
@@ -535,7 +432,7 @@ func HandleServeAlbumImage(params ServeAlbumImageHandlerParams) http.HandlerFunc
 		w.Header().Set("Content-Type", contentType)
 
 		// Set caching headers - covers don't change once stored
-		w.Header().Set("Cache-Control", "public, max-age=86400") // 24 hours
+		w.Header().Set("Cache-Control", "public, max-age=86400") // 24 hours FIXME: can be permanent/only on change??
 		w.Header().Set("ETag", fmt.Sprintf("\"%d\"", vinyl.VinylID))
 
 		w.Write(vinyl.CoverRawBlob)

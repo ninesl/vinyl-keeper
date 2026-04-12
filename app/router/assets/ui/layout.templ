@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/button"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/checkbox"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dialog"
@@ -12,6 +11,7 @@ import (
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/label"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/tabs"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/utils"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
@@ -36,7 +36,7 @@ templ Layout(title string) {
 	</html>
 }
 
-templ Nav(index *vinyl.VinylIndex, signedInUserName string) {
+templ Nav(signedInUserName string) {
 	<nav class="pointer-events-auto mx-auto mb-6 flex w-full max-w-7xl items-center gap-2 rounded-lg border bg-card/80 p-3 backdrop-blur">
 		<div class="flex flex-wrap items-center gap-2">
 			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
@@ -90,7 +90,7 @@ templ SignInButtonZone(userName string) {
 	<div
 		id={ values.IDSignInButtonZone }
 		hx-get={ values.EndpointSignIn + values.EndpointButton }
-		hx-trigger="user-signed-in from:body"
+		hx-trigger={ fmt.Sprintf("%s from:body, %s from:body", values.EventUserSignedIn, values.EventUserSignedOut) }
 		hx-swap="outerHTML"
 	>
 		@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
@@ -113,18 +113,34 @@ templ SignInButtonZone(userName string) {
 	</div>
 }
 
-templ SignInPanel() {
+templ SignInPanel(signedInUserName string) {
 	<div class="space-y-4">
-		<div>
-			<h3 class="text-lg font-semibold">Sign In</h3>
-			<p class="text-sm text-muted-foreground">Pick an existing user or create a new one.</p>
+		<div class="flex items-center justify-between">
+			<div>
+				<h3 class="text-lg font-semibold">Sign In</h3>
+				<p class="text-sm text-muted-foreground">Pick an existing user or create a new one.</p>
+			</div>
+			if signedInUserName != "" {
+				@button.Button(button.Props{
+					Variant: button.VariantDestructive,
+					Size: button.SizeSm,
+					Attributes: templ.Attributes{
+						"hx-post":   values.EndpointSignIn + values.EndpointSignOut,
+						"hx-target": "#" + values.IDModalZoneContent,
+						"hx-swap":   "innerHTML",
+					},
+				}) {
+					@icon.LogOut(icon.Props{Class: "size-4"})
+					<span>Sign Out</span>
+				}
+			}
 		</div>
 		<div id={ values.IDSignInErrors }></div>
 		<div
 			id={ values.IDSignInUsersList }
 			class="space-y-2"
 			hx-get={ values.EndpointSignIn + values.EndpointUsers }
-			hx-trigger="load, user-signed-in from:body"
+			hx-trigger={ fmt.Sprintf("load, %s from:body, %s from:body", values.EventUserSignedIn, values.EventUserSignedOut) }
 			hx-swap="innerHTML"
 		></div>
 		<form
@@ -139,7 +155,7 @@ templ SignInPanel() {
 				Required:    true,
 				Class:       "sm:flex-1",
 			})
-			@button.Button(button.Props{Type: "submit"}) {
+			@button.Button(button.Props{Type: button.TypeSubmit}) {
 				Add User
 			}
 		</form>
@@ -158,31 +174,33 @@ templ SignInUsersList(users []vinyl.User, signedInUserID int64) {
 templ SignInUserRow(user vinyl.User, signedInUserID int64) {
 	<div class="flex items-center justify-between gap-2 rounded-md border bg-card p-2">
 		<div class="text-sm font-medium">{ user.UserName }</div>
-		@button.Button(button.Props{
-			Variant: func() button.Variant {
-				if user.UserID == signedInUserID {
-					return button.VariantSecondary
-				}
-				return button.VariantOutline
-			}(),
-			Size: button.SizeSm,
-			Attributes: templ.Attributes{
-				"hx-post":   values.EndpointSignIn + values.EndpointSubmit,
-				"hx-vals":   fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
-				"hx-swap":   "none",
-				"hx-target": "#" + values.IDSignInErrors,
-			},
-		}) {
-			if user.UserID == signedInUserID {
+		if user.UserID == signedInUserID {
+			// Current user - show disabled button as indicator
+			@button.Button(button.Props{
+				Variant: button.VariantSecondary,
+				Size: button.SizeSm,
+				Disabled: true,
+			}) {
 				@icon.User(icon.Props{Class: "size-4"})
 				<span>Signed In</span>
-			} else {
+			}
+		} else {
+			// Other user - clickable sign in button
+			@button.Button(button.Props{
+				Variant: button.VariantOutline,
+				Size: button.SizeSm,
+				Attributes: templ.Attributes{
+					"hx-post":   values.EndpointSignIn + values.EndpointSubmit,
+					"hx-vals":   fmt.Sprintf(`{"%s":%d}`, values.QueryUserID, user.UserID),
+					"hx-swap":   "none",
+					"hx-target": "#" + values.IDSignInErrors,
+				},
+			}) {
 				@icon.User(icon.Props{Class: "size-4"})
 				<span>Sign In</span>
 			}
 		}
 	</div>
-
 }
 
 templ VinylRegisterForm() {

@@ -138,7 +138,7 @@ templ FilterPanel(endpoint string, index *vinyl.VinylIndex, scopeID string, targ
 			id={ targetID }
 			hx-get={ endpoint }
 			hx-swap="innerHTML"
-			hx-trigger={ "load, vinyl-registered from:body, user-signed-in from:body" }
+			hx-trigger={ fmt.Sprintf("load, %s from:body, %s from:body", values.EventVinylRegistered, values.EventUserSignedIn) }
 		></div>
 	</div>
 }
