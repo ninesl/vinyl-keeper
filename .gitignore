@@ -2,7 +2,7 @@ app/tmp/
 *.md
 *_templ.go
 *.mp4
-models/
+image_service/models/
 *.onnx
 __pycache__/
 .venv/
@@ -19,4 +19,6 @@ app/build/
 deploy/
 *.tar
 .env
+.env.prod
+.env.dev
 certs/
