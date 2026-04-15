@@ -6,27 +6,31 @@ set -eu
 # 2) runs templ/tailwind watchers
 # 3) runs `air` for the app module
 
-host="${IMAGE_SERVICE_HOST:-127.0.0.1}"
-port="${IMAGE_SERVICE_PORT:-8081}"
+host="${IMAGE_SERVICE_HOST?IMAGE_SERVICE_HOST is required}"
+port="${IMAGE_SERVICE_PORT?IMAGE_SERVICE_PORT is required}"
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 repo_root="$(dirname -- "$script_dir")"
-db_path="${DB_PATH:-${repo_root}/data/vinylkeeper.db}"
+db_path="${DB_PATH?DB_PATH is required}"
+case "$db_path" in
+  /data/*) db_path="${repo_root}/${db_path#/}" ;;
+esac
 legacy_db_root="${repo_root}/vinylkeeper.db"
 legacy_db_app="${repo_root}/app/vinylkeeper.db"
 
-embed_model_path="${EMBED_MODEL_PATH:-models/ViT-B-32__openai/visual/model.onnx}"
+embed_model_path="${EMBED_MODEL_PATH?EMBED_MODEL_PATH is required}"
 case "$embed_model_path" in
+  /models/*) embed_model_path="${repo_root}/${embed_model_path#/}" ;;
   /*) ;;
   *) embed_model_path="${repo_root}/${embed_model_path}" ;;
 esac
 
-tls_cert="${TLS_CERT:-certs/dev.crt}"
+tls_cert="${TLS_CERT?TLS_CERT is required}"
 case "$tls_cert" in
   /*) ;;
   *) tls_cert="${repo_root}/${tls_cert}" ;;
 esac
 
-tls_key="${TLS_KEY:-certs/dev.key}"
+tls_key="${TLS_KEY?TLS_KEY is required}"
 case "$tls_key" in
   /*) ;;
   *) tls_key="${repo_root}/${tls_key}" ;;

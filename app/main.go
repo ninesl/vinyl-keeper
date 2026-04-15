@@ -100,19 +100,33 @@ func routeAssets(r *router.Router) {
 
 }
 
+func TestHandlerInit(r *router.Router) {
+	log.Println("[Init] Registering LoggingMiddleware")
+	r.Use(router.LoggingMiddleware)
+	log.Println("[Init] Registering AuthMiddleware")
+	r.Use(router.AuthMiddleware)
+}
+
 func main() {
+	log.Println("[Init] Creating keeper")
 	k, err := NewKeeper()
 	if err != nil {
 		log.Fatalf("failed to create keeper: %v", err)
 	}
 
 	keeper := k.(*keeper)
+	log.Println("[Init] Keeper created successfully")
 
+	log.Println("[Init] Waiting for image service health check")
 	if err := waitForImageServiceHealth(); err != nil {
 		log.Fatalf("image service health check failed: %v", err)
 	}
+	log.Println("[Init] Image service health check passed")
 
+	log.Println("[Init] Creating router")
 	r := router.NewRouter()
+	TestHandlerInit(r)
+	log.Println("[Init] Middleware registration complete")
 
 	r.Route(http.MethodGet, values.EndpointHealth, router.HealthHandler)
 	routeAssets(r)
@@ -183,6 +197,7 @@ func main() {
 		values.EndpointMyVinyl+values.EndpointFilter,
 		router.MyVinylFilterHandler(keeper.MyVinyl, keeper.GetVinylIndex, router.GetUserID))
 
+	log.Println("[Init] Registering embedding routes")
 	setEmbeddingRoutes(r, keeper)
 
 	// Register submit (HTMX endpoint) — triggers vinyl-registered on success
@@ -215,16 +230,18 @@ func main() {
 		}))
 
 	// Get the router handler and wrap with auth middleware
+	log.Println("[Init] Building HTTP handler")
 	baseHandler, err := r.ServeHTTP()
 	if err != nil {
 		log.Fatalf("failed to setup router: %v", err)
 	}
 
-	// Apply auth middleware to all routes
-	handler := router.AuthMiddleware(baseHandler)
+	handler := baseHandler
+	log.Println("[Init] Router setup complete")
 
 	addr := ":8080"
 	enableTLS := true
+	log.Println("[Init] Configuring TLS settings")
 	if raw := os.Getenv("ENABLE_TLS"); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
@@ -234,6 +251,7 @@ func main() {
 	}
 
 	if enableTLS {
+		log.Println("[Init] TLS enabled")
 		certFile := os.Getenv("TLS_CERT")
 		keyFile := os.Getenv("TLS_KEY")
 
@@ -244,14 +262,19 @@ func main() {
 		fmt.Printf("Server listening on https://0.0.0.0%s\n", addr)
 		fmt.Printf("Using TLS cert: %s\n", certFile)
 
+		log.Println("[Init] Starting HTTPS server")
 		if err := http.ListenAndServeTLS(addr, certFile, keyFile, handler); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
+		log.Println("[Shutdown] Server shutting down")
 	} else {
+		log.Println("[Init] TLS disabled")
 		fmt.Printf("Server listening on http://0.0.0.0%s (tls disabled)\n", addr)
+		log.Println("[Init] Starting HTTP server")
 
 		if err := http.ListenAndServe(addr, handler); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
+		log.Println("[Shutdown] Server shutting down")
 	}
 }

@@ -24,7 +24,7 @@ services:
     image: vinyl-keeper:image-service
     command: ["uv", "run", "uvicorn", "image_service:app", "--host", "${IMAGE_SERVICE_BIND_HOST:-0.0.0.0}", "--port", "${IMAGE_SERVICE_PORT:-8081}"]
     environment:
-      EMBED_MODEL_PATH: ${EMBED_MODEL_PATH_PROD?EMBED_MODEL_PATH_PROD is required}
+      EMBED_MODEL_PATH: ${EMBED_MODEL_PATH?EMBED_MODEL_PATH is required}
       EMBED_MODEL_FAMILY: ${EMBED_MODEL_FAMILY?EMBED_MODEL_FAMILY is required}
       EMBED_DIM: "${EMBED_DIM?EMBED_DIM is required}"
       EMBED_IMAGE_SIZE: "${EMBED_IMAGE_SIZE?EMBED_IMAGE_SIZE is required}"
