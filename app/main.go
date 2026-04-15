@@ -120,7 +120,7 @@ func main() {
 	// Main page - scanner interface
 	r.Route(http.MethodGet,
 		"/",
-		router.ScannerPageHandler(keeper.GetVinylIndex, router.IsUserSignedIn, router.GetUserName),
+		router.ScannerPageHandler(),
 	)
 
 	// Modal content routes
@@ -140,7 +140,7 @@ func main() {
 	// Sign-in modal - shows current sign-in status in the panel
 	r.Route(http.MethodGet,
 		values.EndpointModal+"/sign-in",
-		router.SignInPanelHandler(router.GetUserName),
+		router.SignInPanelHandler(),
 	)
 
 	// Scanner button (OOB swap on sign-in/sign-out events)

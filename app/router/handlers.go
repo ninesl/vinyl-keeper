@@ -82,15 +82,10 @@ func ScanButtonHandler(isSignedIn func(*http.Request) bool) http.HandlerFunc {
 	}
 }
 
-func ScannerPageHandler(
-	getIndex func() *vinyl.VinylIndex,
-	isSignedIn func(*http.Request) bool,
-	getUserName func(*http.Request) string,
-) http.HandlerFunc {
+func ScannerPageHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_ = getIndex() // index loaded for side effects if needed
-		signedIn := isSignedIn(r)
-		userName := getUserName(r)
+		signedIn := IsUserSignedIn(r)
+		userName := GetUserName(r)
 		pages.ScannerPage(values.TitleScanner, userName, signedIn).Render(r.Context(), w)
 	}
 }

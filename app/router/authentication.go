@@ -11,9 +11,9 @@ import (
 	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
-// DetermineUser extracts the authenticated user from the request
+// determineUser extracts the authenticated user from the request
 // Returns nil if no valid session exists
-func DetermineUser(r *http.Request) *vinyl.User {
+func determineUser(r *http.Request) *vinyl.User {
 	sessionUser, err := auth.GetSessionUser(r)
 	if err != nil || sessionUser == nil {
 		return nil
@@ -27,7 +27,7 @@ func DetermineUser(r *http.Request) *vinyl.User {
 
 // GetUserID extracts the user ID from the session, returns -1 if not authenticated
 func GetUserID(r *http.Request) int64 {
-	user := DetermineUser(r)
+	user := determineUser(r)
 	if user == nil {
 		return -1
 	}
@@ -36,7 +36,7 @@ func GetUserID(r *http.Request) int64 {
 
 // GetUserName extracts the username from the session, returns empty string if not authenticated
 func GetUserName(r *http.Request) string {
-	user := DetermineUser(r)
+	user := determineUser(r)
 	if user == nil {
 		return ""
 	}
@@ -231,11 +231,11 @@ func SignOutHandler() http.HandlerFunc {
 }
 
 // SignInPanelHandler renders the sign-in panel with current user info
-func SignInPanelHandler(getUserName func(*http.Request) string) http.HandlerFunc {
+func SignInPanelHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
-		userName := getUserName(r)
-		ui.SignInPanel(userName, false).Render(r.Context(), w)
+
+		ui.SignInPanel(GetUserName(r), false).Render(r.Context(), w)
 	}
 }
 
