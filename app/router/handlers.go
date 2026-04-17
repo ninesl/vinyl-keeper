@@ -86,6 +86,11 @@ func ScannerPageHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		signedIn := IsUserSignedIn(r)
 		userName := GetUserName(r)
+		// Trigger user-signed-in event after page settles if user is already authenticated
+		// This allows components that listen for auth events to refresh their state
+		if signedIn {
+			w.Header().Set(values.HeaderHXTriggerAfterSettle, values.EventUserSignedIn)
+		}
 		pages.ScannerPage(values.TitleScanner, userName, signedIn).Render(r.Context(), w)
 	}
 }
