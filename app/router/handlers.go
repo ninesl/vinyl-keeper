@@ -19,7 +19,7 @@ import (
 // Embedding is a float64 slice
 type Embedding []float64
 
-const ConfidenceThreshold = 0.80 // 80%
+
 
 // parseFilterCriteria extracts filter criteria from query parameters
 func parseFilterCriteria(r *http.Request) vinyl.FilterCriteria {
@@ -269,13 +269,8 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 		// Calculate similarity
 		sim := cosineSimilarity(embedding, vinylEmbedding)
 
-		// If confidence is below threshold, show choice card
-		if sim < ConfidenceThreshold {
-			pages.LowConfidenceChoiceCard(vinylResult, sim*100).Render(r.Context(), w)
-			return
-		}
-
-		renderAcceptedScanResult(w, r, params, vinylResult, sim*100)
+		// Always show choice card with confidence badge
+		pages.LowConfidenceChoiceCard(vinylResult, sim*100).Render(r.Context(), w)
 	}
 }
 

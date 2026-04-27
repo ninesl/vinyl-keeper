@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -11,6 +12,9 @@ const (
 	CookieName = "vk_session"
 	// CookiePath is the path for the session cookie
 	CookiePath = "/"
+	// SessionLifetimeSeconds is the persistent session lifetime (30 days)
+	// Used for both cookie MaxAge/Expires and JWT exp claim
+	SessionLifetimeSeconds = 30 * 24 * 60 * 60
 )
 
 // SessionUser holds the authenticated user information extracted from the session
@@ -35,6 +39,7 @@ func CreateSessionCookie(w http.ResponseWriter, userID int64, username string) e
 
 	// Determine if we should use Secure flag based on TLS setting
 	secure := os.Getenv("ENABLE_TLS") == "true"
+	expires := time.Now().Add(time.Duration(SessionLifetimeSeconds) * time.Second)
 
 	// Set cookie
 	cookie := &http.Cookie{
@@ -44,7 +49,8 @@ func CreateSessionCookie(w http.ResponseWriter, userID int64, username string) e
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
-		// No MaxAge or Expires - session cookie (deleted when browser closes)
+		MaxAge:   SessionLifetimeSeconds,
+		Expires:  expires,
 	}
 
 	http.SetCookie(w, cookie)

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/button"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/checkbox"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dropdown"
@@ -10,15 +9,16 @@ import (
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/label"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/tabs"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/parts"
+	"github.com/ninesl/vinyl-keeper/app/router/values"
 	"github.com/ninesl/vinyl-keeper/app/vinyl"
 )
 
 // AlbumsGrid renders the grid of album cards
 templ AlbumsGrid(vinyls []vinyl.VinylUnique) {
-	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-4">
+	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-2">
 		if len(vinyls) > 0 {
 			for _, v := range vinyls {
-				@parts.AlbumCard(v, false, 0)
+				@parts.AlbumCard(v)
 			}
 		} else {
 			@parts.EmptyState("No albums match your filters")
@@ -28,7 +28,7 @@ templ AlbumsGrid(vinyls []vinyl.VinylUnique) {
 
 // MyVinylGrid renders the grid of vinyl with play data
 templ MyVinylGrid(vinyls []vinyl.VinylWithPlayData) {
-	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-4">
+	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-2">
 		if len(vinyls) > 0 {
 			for _, v := range vinyls {
 				@parts.MyVinylCard(v)

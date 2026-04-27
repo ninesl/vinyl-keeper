@@ -50,14 +50,17 @@ type SessionClaims struct {
 }
 
 // SignJWT creates a signed JWT for the given user
-// The JWT never expires (as per requirements)
+// The JWT expires after SessionLifetimeSeconds (30 days)
 func SignJWT(userID int64, username string) (string, error) {
+	now := time.Now()
+	exp := now.Add(time.Duration(SessionLifetimeSeconds) * time.Second)
+
 	claims := SessionClaims{
 		UserID:   userID,
 		Username: username,
 		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt: jwt.NewNumericDate(time.Now()),
-			// No ExpiresAt - JWT never expires
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(exp),
 		},
 	}
 

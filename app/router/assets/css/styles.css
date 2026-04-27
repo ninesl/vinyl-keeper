@@ -13,3 +13,31 @@
 #alignment-box {
   box-shadow: 0 0 0 9999px rgb(0 0 0 / 50%);
 }
+
+/* Album card spoiler toggle */
+.album-details summary {
+  list-style: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.album-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.album-details:not([open]) .overlay-default {
+  display: block;
+}
+
+.album-details:not([open]) .overlay-spoiler {
+  display: none;
+}
+
+.album-details[open] .overlay-default {
+  display: none;
+}
+
+.album-details[open] .overlay-spoiler {
+  display: flex;
+}

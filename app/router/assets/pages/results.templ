@@ -6,11 +6,13 @@ import (
 )
 
 templ AlbumCard(v vinyl.VinylUnique) {
-	@parts.AlbumCard(v, false, 0)
+	@parts.AlbumCard(v)
 }
 
 templ ScanResultCard(v vinyl.VinylUnique, similarity float64) {
-	@parts.AlbumCard(v, true, similarity)
+	@parts.ConfidenceBadgeWrapper(similarity) {
+		@parts.AlbumCard(v)
+	}
 }
 
 templ LowConfidenceChoiceCard(v vinyl.VinylUnique, similarity float64) {

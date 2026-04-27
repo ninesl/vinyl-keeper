@@ -64,17 +64,22 @@ func TestScanCoverHTMLHandler_HighConfidence(t *testing.T) {
 
 	body := w.Body.String()
 
-	// High confidence should render ScanResultCard, not LowConfidenceChoiceCard
-	if strings.Contains(body, "Low Match Confidence") {
-		t.Error("High confidence match should not show low confidence card")
-	}
-
 	if !strings.Contains(body, "Test Album") {
 		t.Error("Response should contain vinyl title")
 	}
 
-	if !strings.Contains(body, "Match:") {
-		t.Error("Response should contain match confidence")
+	// Should show choice buttons (no auto-accept anymore)
+	if !strings.Contains(body, "Yes, this is correct") {
+		t.Error("Response should contain accept button")
+	}
+
+	if !strings.Contains(body, "No, register as new vinyl") {
+		t.Error("Response should contain register button")
+	}
+
+	// Should contain confidence percentage badge
+	if !strings.Contains(body, "%") {
+		t.Error("Response should contain confidence percentage")
 	}
 }
 
@@ -138,11 +143,6 @@ func TestScanCoverHTMLHandler_LowConfidence(t *testing.T) {
 
 	body := w.Body.String()
 
-	// Low confidence should show LowConfidenceChoiceCard
-	if !strings.Contains(body, "Low Match Confidence") {
-		t.Error("Low confidence match should show low confidence card")
-	}
-
 	if !strings.Contains(body, "Different Album") {
 		t.Error("Response should contain matched vinyl title")
 	}
@@ -159,67 +159,14 @@ func TestScanCoverHTMLHandler_LowConfidence(t *testing.T) {
 	if !strings.Contains(body, "confirm") || !strings.Contains(body, "vinyl_id") {
 		t.Error("Response should post confirmation payload back to scan endpoint")
 	}
-}
 
-func TestScanCoverHTMLHandler_HighConfidence_PassesUserIDToPlayRecord(t *testing.T) {
-	imagePath := filepath.Join("..", "..", "photos", "album_1.jpg")
-	imageData, err := os.ReadFile(imagePath)
-	if err != nil {
-		t.Fatalf("Failed to read test image: %v", err)
-	}
-
-	testEmbedding := make(Embedding, 512)
-	for i := range testEmbedding {
-		testEmbedding[i] = 1.0
-	}
-
-	mockVinyl := vinyl.VinylUnique{
-		VinylID:           1,
-		VinylTitle:        "Test Album",
-		VinylArtist:       "Test Artist",
-		VinylPressingYear: 2020,
-		ImageExtension:    "jpg",
-		CoverEmbedding:    embeddingToBlob(testEmbedding),
-		CoverRawBlob:      imageData,
-	}
-
-	var gotVinylID int64
-	var gotUserID int64
-
-	params := ScanHandlerParams{
-		GetEmbedding: func(img []byte) (Embedding, error) {
-			return testEmbedding, nil
-		},
-		FindClosestVinylUnqiue: func(emb Embedding) vinyl.VinylUnique {
-			return mockVinyl
-		},
-		PlayRecord: func(vinylID, userID int64) error {
-			gotVinylID = vinylID
-			gotUserID = userID
-			return nil
-		},
-		GetUserID: func(*http.Request) int64 {
-			return 42
-		},
-	}
-
-	handler := ScanCoverHTMLHandler(params)
-	req := httptest.NewRequest(http.MethodPost, "/search/htmx", bytes.NewReader(imageData))
-	req.Header.Set("Content-Type", "image/jpeg")
-	w := httptest.NewRecorder()
-
-	handler(w, req)
-
-	if w.Result().StatusCode != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", w.Result().StatusCode)
-	}
-	if gotVinylID != 1 {
-		t.Fatalf("Expected PlayRecord vinylID=1, got %d", gotVinylID)
-	}
-	if gotUserID != 42 {
-		t.Fatalf("Expected PlayRecord userID=42, got %d", gotUserID)
+	// Should contain confidence percentage badge
+	if !strings.Contains(body, "%") {
+		t.Error("Response should contain confidence percentage")
 	}
 }
+
+
 
 func TestScanCoverHTMLHandler_ConfirmFlow_PassesUserIDToPlayRecord(t *testing.T) {
 	mockVinyl := vinyl.VinylUnique{

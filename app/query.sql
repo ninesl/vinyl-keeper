@@ -35,8 +35,8 @@ DO UPDATE SET
 RETURNING *;
 
 -- name: RecordVinylCollection :one
-INSERT INTO user_vinyl_plays (user_id, vinyl_id, plays)
-VALUES (?, ?, 0)
+INSERT INTO user_vinyl_plays (user_id, vinyl_id, plays, first_played, last_played)
+VALUES (?, ?, 0, date('now'), date('now'))
 ON CONFLICT(user_id, vinyl_id)
 DO UPDATE SET 
     plays = plays + 1,
