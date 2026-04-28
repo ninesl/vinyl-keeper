@@ -170,7 +170,8 @@ type discogsResp struct {
 
 type discogsSearchResp struct {
 	Results []struct {
-		MasterID int `json:"master_id"`
+		Type     string `json:"type"`
+		MasterID int    `json:"master_id"`
 	} `json:"results"`
 }
 
@@ -231,12 +232,47 @@ func requestDiscogs(albumTitle, artist string) (discogsResp, error) {
 		return discogsResp{}, fmt.Errorf("no results found for album '%s' by artist '%s'", albumTitle, artist)
 	}
 
-	masterID := searchResult.Results[0].MasterID
-	if masterID == 0 {
-		return discogsResp{}, fmt.Errorf("no master_id found in search results")
+	masterIDs := make([]int, 0, len(searchResult.Results))
+	seenMasterID := make(map[int]struct{}, len(searchResult.Results))
+	appendMasterID := func(masterID int) {
+		if masterID == 0 {
+			return
+		}
+		if _, exists := seenMasterID[masterID]; exists {
+			return
+		}
+		seenMasterID[masterID] = struct{}{}
+		masterIDs = append(masterIDs, masterID)
 	}
 
-	return requestMasterDiscogs(masterID)
+	// Prefer explicit master results, then any result carrying a master_id.
+	for _, result := range searchResult.Results {
+		if result.Type == "master" {
+			appendMasterID(result.MasterID)
+		}
+	}
+	for _, result := range searchResult.Results {
+		appendMasterID(result.MasterID)
+	}
+
+	if len(masterIDs) == 0 {
+		return discogsResp{}, fmt.Errorf("no master_id found in search results for album '%s' by artist '%s'", albumTitle, artist)
+	}
+
+	var lastErr error
+	for _, masterID := range masterIDs {
+		resp, err := requestMasterDiscogs(masterID)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		return discogsResp{}, fmt.Errorf("failed to resolve usable discogs master from search results: %w", lastErr)
+	}
+
+	return discogsResp{}, fmt.Errorf("failed to resolve usable discogs master from search results")
 }
 
 func requestMasterDiscogs(masterID int) (discogsResp, error) {
@@ -273,7 +309,7 @@ func requestMasterDiscogs(masterID int) (discogsResp, error) {
 	genresStr := strings.Join(masterResult.Genres, ",")
 	stylesStr := strings.Join(masterResult.Styles, ",")
 
-	// Find primary image URI
+	// Find primary image URI, then fall back to the first available image.
 	var imageURI string
 	for i := 0; i < len(masterResult.Images); i++ {
 		if masterResult.Images[i].Type == "primary" {
@@ -281,9 +317,12 @@ func requestMasterDiscogs(masterID int) (discogsResp, error) {
 			break
 		}
 	}
+	if imageURI == "" && len(masterResult.Images) > 0 {
+		imageURI = masterResult.Images[0].URI
+	}
 
 	if imageURI == "" {
-		return discogsResp{}, fmt.Errorf("no primary image found for master %d", masterID)
+		return discogsResp{}, fmt.Errorf("no image found for master %d", masterID)
 	}
 
 	// Step 3: Download the image

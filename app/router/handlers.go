@@ -365,6 +365,7 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				parts.ErrorMessage(err.Error()).Render(r.Context(), w)
+				return
 			}
 
 			vinylUnique, err = params.RegisterVinylID(id)

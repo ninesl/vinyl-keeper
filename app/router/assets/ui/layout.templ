@@ -17,7 +17,7 @@ import (
 
 templ Layout(title string) {
 	<!DOCTYPE html>
-	<html lang="en" class="dark overflow-hidden">
+	<html lang="en" class="dark">
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -30,7 +30,7 @@ templ Layout(title string) {
 			<link rel="stylesheet" href="/assets/css/output.css"/>
 			<link rel="stylesheet" href="/assets/css/styles.css"/>
 		</head>
-		<body class="min-h-screen bg-background text-foreground p-4 md:p-6 overflow-hidden">
+		<body class="min-h-screen bg-background text-foreground p-4 md:p-6">
 			{ children... }
 		</body>
 	</html>
@@ -246,7 +246,7 @@ templ VinylRegisterForm() {
 			<h3 class="text-lg font-semibold">Register New Vinyl</h3>
 		</div>
 		<form
-			hx-get={ values.EndpointRegister + values.EndpointSubmit }
+			hx-post={ values.EndpointRegister + values.EndpointSubmit }
 			hx-target={ "#" + values.IDResults }
 			hx-swap="afterbegin"
 			hx-indicator="#loading"

@@ -210,7 +210,7 @@ func main() {
 	setEmbeddingRoutes(r, keeper)
 
 	// Register submit (HTMX endpoint) — triggers vinyl-registered on success
-	r.Route(http.MethodGet,
+	r.Route(http.MethodPost,
 		values.EndpointRegister+values.EndpointSubmit,
 		router.RegisterSubmitHandler(router.RegisterHandlerParams{
 			RegisterVinyl: func(artist, album string) (vinyl.VinylUnique, error) {
