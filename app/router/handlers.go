@@ -355,27 +355,23 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 		} else if nameSearch {
 			vinylUnique, err = params.RegisterVinyl(artist, album)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				parts.ErrorMessage(err.Error()).Render(r.Context(), w)
+				parts.ErrorMessage("No album found").Render(r.Context(), w)
 				return
 			}
 
 		} else if masterIDSearch {
 			id, err := strconv.Atoi(masterID)
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				parts.ErrorMessage(err.Error()).Render(r.Context(), w)
+				parts.ErrorMessage("No album found").Render(r.Context(), w)
 				return
 			}
 
 			vinylUnique, err = params.RegisterVinylID(id)
 			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				parts.ErrorMessage(err.Error()).Render(r.Context(), w)
+				parts.ErrorMessage("No album found").Render(r.Context(), w)
 				return
 			}
 		} else {
-			w.WriteHeader(http.StatusBadRequest)
 			parts.ErrorMessage("must provide album/artist or master ID").Render(r.Context(), w)
 			return
 		}

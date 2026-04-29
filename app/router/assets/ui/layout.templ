@@ -248,8 +248,9 @@ templ VinylRegisterForm() {
 		<form
 			hx-post={ values.EndpointRegister + values.EndpointSubmit }
 			hx-target={ "#" + values.IDResults }
-			hx-swap="afterbegin"
+			hx-swap="innerHTML"
 			hx-indicator="#loading"
+			hx-disabled-elt="#register-submit-btn"
 			class="flex flex-col gap-4"
 		>
 			@tabs.Tabs() {
@@ -307,11 +308,12 @@ templ VinylRegisterForm() {
 					</div>
 				}
 			}
-			@button.Button(button.Props{
-				Type: "submit",
-			}) {
-				Register Vinyl <span id="loading" class="htmx-indicator">...</span>
-			}
+		@button.Button(button.Props{
+			Type: "submit",
+			ID:   "register-submit-btn",
+		}) {
+			Register Vinyl <span id="loading" class="htmx-indicator">@icon.LoaderCircle(icon.Props{Class: "size-4 animate-spin"})</span>
+		}
 		</form>
 		<div id={ values.IDResults }></div>
 	</div>
