@@ -1665,7 +1665,7 @@ func mapVinylRecords(rows []vinyl.GetAllVinylRecordsRow) []vinyl.VinylRecord {
 	return items
 }
 
-func mapVinylRecord(row interface{}) vinyl.VinylRecord {
+func mapVinylRecord(row any) vinyl.VinylRecord {
 	switch r := row.(type) {
 	case vinyl.GetAllVinylRecordsRow:
 		return vinyl.VinylRecord{

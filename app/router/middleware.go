@@ -40,9 +40,19 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "issue parsing request form", http.StatusInternalServerError)
+			return
+		}
+		if len(r.Form) > 0 {
+			log.Printf("<payload> %+v", r.Form)
+		}
+
 		next.ServeHTTP(wrapped, r)
 
 		duration := time.Since(start)
+
 		log.Printf("[%s] %s %d %s", r.Method, r.URL.Path, wrapped.statusCode, duration)
 	})
 }

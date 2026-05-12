@@ -40,7 +40,7 @@ import (
 //go:embed router/assets
 var assetsFS embed.FS
 
-func setEmbeddingRoutes(r *router.Router, keeper *keeper) {
+func embeddingRoutes(r *router.Router, keeper *keeper) {
 	// Search endpoint (JSON response)
 	r.Route(http.MethodPost,
 		values.EndpointSearch,
@@ -114,10 +114,10 @@ func routeAssets(r *router.Router) {
 
 }
 
-func TestHandlerInit(r *router.Router) {
+func MiddlewareInit(r *router.Router) {
 	r.Use(router.RecoveryMiddleware)
-	r.Use(router.LoggingMiddleware)
 	r.Use(router.AuthMiddleware)
+	r.Use(router.LoggingMiddleware)
 }
 
 func main() {
@@ -136,21 +136,22 @@ func main() {
 	}
 	log.Println("[Init] Image service health check passed")
 
-	if runMainReleaseMigration() {
-		log.Println("[Migration] Starting release + plays migration")
-		if err := keeper.MigrateMainReleaseEmbeddings(); err != nil {
-			log.Fatalf("main-release migration failed: %v", err)
+	/*
+		if runMainReleaseMigration() {
+			log.Println("[Migration] Starting release + plays migration")
+			if err := keeper.MigrateMainReleaseEmbeddings(); err != nil {
+				log.Fatalf("main-release migration failed: %v", err)
+			}
+			if err := keeper.MigrateLegacyUserVinylPlays(); err != nil {
+				log.Fatalf("legacy plays migration failed: %v", err)
+			}
+			log.Println("[Migration] Release + plays migration complete")
+			return
 		}
-		if err := keeper.MigrateLegacyUserVinylPlays(); err != nil {
-			log.Fatalf("legacy plays migration failed: %v", err)
-		}
-		log.Println("[Migration] Release + plays migration complete")
-		return
-	}
-
+	*/
 	log.Println("[Init] Creating router")
 	r := router.NewRouter()
-	TestHandlerInit(r)
+	MiddlewareInit(r)
 	log.Println("[Init] Middleware registration complete")
 
 	r.Route(http.MethodGet, values.EndpointHealth, router.HealthHandler)
@@ -239,7 +240,7 @@ func main() {
 		}))
 
 	log.Println("[Init] Registering embedding routes")
-	setEmbeddingRoutes(r, keeper)
+	embeddingRoutes(r, keeper)
 
 	// Register submit (HTMX endpoint) — triggers vinyl-registered on success
 	r.Route(http.MethodPost,
