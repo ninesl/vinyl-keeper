@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS vinyl_unique(
 	vinyl_title TEXT NOT NULL,
 	vinyl_artist TEXT NOT NULL,
 	master_id INTEGER,
+	master_year INTEGER,
 	styles TEXT, -- comma separated list of styles "Alternative Rock,Punk" etc
 	genres TEXT, -- comma separated list of genres "Rock,Heavy Metal" etc TODO: need to make this take out '&' and whitespace
 	UNIQUE (vinyl_title, vinyl_artist)

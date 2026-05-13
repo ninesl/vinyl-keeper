@@ -30,6 +30,21 @@ func (q *Queries) DeleteUser(ctx context.Context, userID int64) error {
 	return err
 }
 
+const deleteUserVinylPlays = `-- name: DeleteUserVinylPlays :exec
+DELETE FROM vinyl_plays
+WHERE user_id = ? AND vinyl_id = ?
+`
+
+type DeleteUserVinylPlaysParams struct {
+	UserID  int64 `db:"user_id"`
+	VinylID int64 `db:"vinyl_id"`
+}
+
+func (q *Queries) DeleteUserVinylPlays(ctx context.Context, arg DeleteUserVinylPlaysParams) error {
+	_, err := q.exec(ctx, q.deleteUserVinylPlaysStmt, deleteUserVinylPlays, arg.UserID, arg.VinylID)
+	return err
+}
+
 const deleteVinyl = `-- name: DeleteVinyl :exec
 DELETE FROM vinyl_unique WHERE vinyl_id = ?
 `
@@ -59,6 +74,21 @@ func (q *Queries) EnsureOwnershipPlay(ctx context.Context, arg EnsureOwnershipPl
 		arg.PlayedDate,
 	)
 	return err
+}
+
+const findExistingVinylIDByMasterID = `-- name: FindExistingVinylIDByMasterID :one
+SELECT vu.vinyl_id
+FROM vinyl_unique vu
+JOIN vinyl_release vr ON vr.vinyl_id = vu.vinyl_id AND vr.release_id = 0
+WHERE vu.master_id = ?
+LIMIT 1
+`
+
+func (q *Queries) FindExistingVinylIDByMasterID(ctx context.Context, masterID *int64) (int64, error) {
+	row := q.queryRow(ctx, q.findExistingVinylIDByMasterIDStmt, findExistingVinylIDByMasterID, masterID)
+	var vinyl_id int64
+	err := row.Scan(&vinyl_id)
+	return vinyl_id, err
 }
 
 const getAllUserVinylPlays = `-- name: GetAllUserVinylPlays :many
@@ -115,19 +145,20 @@ SELECT
     vu.vinyl_title,
     vu.vinyl_artist,
     vu.master_id,
+    vu.master_year,
     vu.styles,
     vu.genres,
-    CAST(substr(vr.released, 1, 4) AS INTEGER) AS vinyl_pressing_year,
+    COALESCE(vu.master_year, CAST(substr(vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
     vr.country,
     vr.lowest_price AS recent_price,
-    vr.released,
-    vr.image_extension,
-    vr.cover_raw_blob,
-    vr.cover_embedding
+    COALESCE(vr.released, CAST(vu.master_year AS TEXT), '') AS released,
+    COALESCE(vr.image_extension, '') AS image_extension,
+    COALESCE(vr.cover_raw_blob, X'') AS cover_raw_blob,
+    COALESCE(vr.cover_embedding, X'') AS cover_embedding
 FROM vinyl_unique vu
-JOIN vinyl_release vr
+LEFT JOIN vinyl_release vr
     ON vr.vinyl_id = vu.vinyl_id
-   AND vr.master_release = 1
+   AND vr.release_id = 0
 ORDER BY vu.vinyl_artist ASC, vu.vinyl_title ASC
 `
 
@@ -136,6 +167,7 @@ type GetAllVinylRecordsRow struct {
 	VinylTitle        string   `db:"vinyl_title"`
 	VinylArtist       string   `db:"vinyl_artist"`
 	MasterID          *int64   `db:"master_id"`
+	MasterYear        *int64   `db:"master_year"`
 	Styles            *string  `db:"styles"`
 	Genres            *string  `db:"genres"`
 	VinylPressingYear int64    `db:"vinyl_pressing_year"`
@@ -161,6 +193,7 @@ func (q *Queries) GetAllVinylRecords(ctx context.Context) ([]GetAllVinylRecordsR
 			&i.VinylTitle,
 			&i.VinylArtist,
 			&i.MasterID,
+			&i.MasterYear,
 			&i.Styles,
 			&i.Genres,
 			&i.VinylPressingYear,
@@ -184,10 +217,138 @@ func (q *Queries) GetAllVinylRecords(ctx context.Context) ([]GetAllVinylRecordsR
 	return items, nil
 }
 
+const getCurrentReleaseID = `-- name: GetCurrentReleaseID :one
+SELECT release_id
+FROM vinyl_plays
+WHERE user_id = ? AND vinyl_id = ?
+ORDER BY played_date DESC, play DESC
+LIMIT 1
+`
+
+type GetCurrentReleaseIDParams struct {
+	UserID  int64 `db:"user_id"`
+	VinylID int64 `db:"vinyl_id"`
+}
+
+func (q *Queries) GetCurrentReleaseID(ctx context.Context, arg GetCurrentReleaseIDParams) (int64, error) {
+	row := q.queryRow(ctx, q.getCurrentReleaseIDStmt, getCurrentReleaseID, arg.UserID, arg.VinylID)
+	var release_id int64
+	err := row.Scan(&release_id)
+	return release_id, err
+}
+
+const getMyVinyl = `-- name: GetMyVinyl :many
+WITH plays AS (
+    SELECT
+        vp.user_id,
+        vp.vinyl_id,
+        CAST(SUM(CASE WHEN vp.play >= 1 THEN 1 ELSE 0 END) AS INTEGER) AS plays,
+        CAST(MIN(vp.played_date) AS TEXT) AS first_played,
+        CAST(MAX(vp.played_date) AS TEXT) AS last_played,
+        (
+            SELECT vp2.release_id
+            FROM vinyl_plays vp2
+            WHERE vp2.user_id = vp.user_id
+              AND vp2.vinyl_id = vp.vinyl_id
+            ORDER BY vp2.played_date DESC, vp2.play DESC
+            LIMIT 1
+        ) AS release_id
+    FROM vinyl_plays vp
+    WHERE vp.user_id = ?
+    GROUP BY vp.user_id, vp.vinyl_id
+)
+SELECT
+    p.vinyl_id,
+    p.plays,
+    p.first_played,
+    p.last_played,
+    p.release_id,
+    COALESCE(vu.master_year, CAST(substr(master_vr.released, 1, 4) AS INTEGER), CAST(substr(vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
+    CASE WHEN p.release_id = 0 THEN NULL ELSE COALESCE(NULLIF(vrc.country, ''), vr.country) END AS release_country,
+    COALESCE(vr.released, CAST(vu.master_year AS TEXT), '') AS released,
+    COALESCE(vr.image_extension, '') AS image_extension,
+    CASE WHEN p.release_id = 0 THEN NULL ELSE vr.lowest_price END AS lowest_price,
+    vrc.label,
+    vrc.release_format,
+    vrc.cover_uri,
+    CASE WHEN length(vr.cover_raw_blob) > 0 THEN 1 ELSE 0 END AS has_blob,
+    CASE WHEN p.release_id = 0 THEN NULL ELSE vr.notes END AS notes
+FROM plays p
+JOIN vinyl_unique vu ON vu.vinyl_id = p.vinyl_id
+LEFT JOIN vinyl_release vr
+  ON vr.vinyl_id = p.vinyl_id
+ AND vr.release_id = p.release_id
+LEFT JOIN vinyl_release master_vr
+  ON master_vr.vinyl_id = p.vinyl_id
+ AND master_vr.release_id = 0
+LEFT JOIN vinyl_releases_check vrc
+  ON vrc.vinyl_id = p.vinyl_id
+ AND vrc.release_id = p.release_id
+ORDER BY p.last_played DESC
+`
+
+type GetMyVinylRow struct {
+	VinylID           int64       `db:"vinyl_id"`
+	Plays             int64       `db:"plays"`
+	FirstPlayed       string      `db:"first_played"`
+	LastPlayed        string      `db:"last_played"`
+	ReleaseID         int64       `db:"release_id"`
+	VinylPressingYear int64       `db:"vinyl_pressing_year"`
+	ReleaseCountry    interface{} `db:"release_country"`
+	Released          string      `db:"released"`
+	ImageExtension    string      `db:"image_extension"`
+	LowestPrice       interface{} `db:"lowest_price"`
+	Label             *string     `db:"label"`
+	ReleaseFormat     *string     `db:"release_format"`
+	CoverUri          *string     `db:"cover_uri"`
+	HasBlob           int64       `db:"has_blob"`
+	Notes             interface{} `db:"notes"`
+}
+
+func (q *Queries) GetMyVinyl(ctx context.Context, userID int64) ([]GetMyVinylRow, error) {
+	rows, err := q.query(ctx, q.getMyVinylStmt, getMyVinyl, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMyVinylRow{}
+	for rows.Next() {
+		var i GetMyVinylRow
+		if err := rows.Scan(
+			&i.VinylID,
+			&i.Plays,
+			&i.FirstPlayed,
+			&i.LastPlayed,
+			&i.ReleaseID,
+			&i.VinylPressingYear,
+			&i.ReleaseCountry,
+			&i.Released,
+			&i.ImageExtension,
+			&i.LowestPrice,
+			&i.Label,
+			&i.ReleaseFormat,
+			&i.CoverUri,
+			&i.HasBlob,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPrimaryReleaseID = `-- name: GetPrimaryReleaseID :one
 SELECT release_id
 FROM vinyl_release
 WHERE vinyl_id = ? AND master_release = 1
+   AND release_id != 0
 LIMIT 1
 `
 
@@ -196,6 +357,160 @@ func (q *Queries) GetPrimaryReleaseID(ctx context.Context, vinylID int64) (int64
 	var release_id int64
 	err := row.Scan(&release_id)
 	return release_id, err
+}
+
+const getReleaseBlobLengths = `-- name: GetReleaseBlobLengths :one
+SELECT length(cover_embedding) AS cover_embedding_len, length(cover_raw_blob) AS cover_raw_blob_len
+FROM vinyl_release
+WHERE vinyl_id = ? AND release_id = ?
+LIMIT 1
+`
+
+type GetReleaseBlobLengthsParams struct {
+	VinylID   int64 `db:"vinyl_id"`
+	ReleaseID int64 `db:"release_id"`
+}
+
+type GetReleaseBlobLengthsRow struct {
+	CoverEmbeddingLen *int64 `db:"cover_embedding_len"`
+	CoverRawBlobLen   *int64 `db:"cover_raw_blob_len"`
+}
+
+func (q *Queries) GetReleaseBlobLengths(ctx context.Context, arg GetReleaseBlobLengthsParams) (GetReleaseBlobLengthsRow, error) {
+	row := q.queryRow(ctx, q.getReleaseBlobLengthsStmt, getReleaseBlobLengths, arg.VinylID, arg.ReleaseID)
+	var i GetReleaseBlobLengthsRow
+	err := row.Scan(&i.CoverEmbeddingLen, &i.CoverRawBlobLen)
+	return i, err
+}
+
+const getReleaseCandidateRow = `-- name: GetReleaseCandidateRow :one
+SELECT
+    vu.vinyl_id,
+    vu.vinyl_title,
+    vu.vinyl_artist,
+    vu.master_id,
+    vu.styles,
+    vu.genres,
+    COALESCE(vu.master_year, CAST(substr(master_vr.released, 1, 4) AS INTEGER), CAST(substr(vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
+    COALESCE(NULLIF(vrc.country, ''), vr.country) AS country,
+    vr.released,
+    vr.lowest_price,
+    vr.image_extension,
+    vr.cover_embedding,
+    vr.release_id,
+    vrc.label,
+    vrc.release_format,
+    COALESCE(NULLIF(vrc.country, ''), vr.country) AS release_country,
+    vrc.cover_uri,
+    CASE WHEN length(vr.cover_raw_blob) > 0 THEN 1 ELSE 0 END AS has_blob,
+    vr.notes
+FROM vinyl_release vr
+JOIN vinyl_unique vu ON vu.vinyl_id = vr.vinyl_id
+LEFT JOIN vinyl_releases_check vrc
+    ON vrc.vinyl_id = vr.vinyl_id
+   AND vrc.release_id = vr.release_id
+LEFT JOIN vinyl_release master_vr
+    ON master_vr.vinyl_id = vr.vinyl_id
+   AND master_vr.release_id = 0
+WHERE vr.vinyl_id = ? AND vr.release_id = ?
+LIMIT 1
+`
+
+type GetReleaseCandidateRowParams struct {
+	VinylID   int64 `db:"vinyl_id"`
+	ReleaseID int64 `db:"release_id"`
+}
+
+type GetReleaseCandidateRowRow struct {
+	VinylID           int64    `db:"vinyl_id"`
+	VinylTitle        string   `db:"vinyl_title"`
+	VinylArtist       string   `db:"vinyl_artist"`
+	MasterID          *int64   `db:"master_id"`
+	Styles            *string  `db:"styles"`
+	Genres            *string  `db:"genres"`
+	VinylPressingYear int64    `db:"vinyl_pressing_year"`
+	Country           *string  `db:"country"`
+	Released          string   `db:"released"`
+	LowestPrice       *float64 `db:"lowest_price"`
+	ImageExtension    string   `db:"image_extension"`
+	CoverEmbedding    []byte   `db:"cover_embedding"`
+	ReleaseID         int64    `db:"release_id"`
+	Label             *string  `db:"label"`
+	ReleaseFormat     *string  `db:"release_format"`
+	ReleaseCountry    *string  `db:"release_country"`
+	CoverUri          *string  `db:"cover_uri"`
+	HasBlob           int64    `db:"has_blob"`
+	Notes             *string  `db:"notes"`
+}
+
+func (q *Queries) GetReleaseCandidateRow(ctx context.Context, arg GetReleaseCandidateRowParams) (GetReleaseCandidateRowRow, error) {
+	row := q.queryRow(ctx, q.getReleaseCandidateRowStmt, getReleaseCandidateRow, arg.VinylID, arg.ReleaseID)
+	var i GetReleaseCandidateRowRow
+	err := row.Scan(
+		&i.VinylID,
+		&i.VinylTitle,
+		&i.VinylArtist,
+		&i.MasterID,
+		&i.Styles,
+		&i.Genres,
+		&i.VinylPressingYear,
+		&i.Country,
+		&i.Released,
+		&i.LowestPrice,
+		&i.ImageExtension,
+		&i.CoverEmbedding,
+		&i.ReleaseID,
+		&i.Label,
+		&i.ReleaseFormat,
+		&i.ReleaseCountry,
+		&i.CoverUri,
+		&i.HasBlob,
+		&i.Notes,
+	)
+	return i, err
+}
+
+const getReleaseCover = `-- name: GetReleaseCover :one
+SELECT image_extension, cover_raw_blob
+FROM vinyl_release
+WHERE vinyl_id = ? AND release_id = ?
+LIMIT 1
+`
+
+type GetReleaseCoverParams struct {
+	VinylID   int64 `db:"vinyl_id"`
+	ReleaseID int64 `db:"release_id"`
+}
+
+type GetReleaseCoverRow struct {
+	ImageExtension string `db:"image_extension"`
+	CoverRawBlob   []byte `db:"cover_raw_blob"`
+}
+
+func (q *Queries) GetReleaseCover(ctx context.Context, arg GetReleaseCoverParams) (GetReleaseCoverRow, error) {
+	row := q.queryRow(ctx, q.getReleaseCoverStmt, getReleaseCover, arg.VinylID, arg.ReleaseID)
+	var i GetReleaseCoverRow
+	err := row.Scan(&i.ImageExtension, &i.CoverRawBlob)
+	return i, err
+}
+
+const getReleaseMasterFlag = `-- name: GetReleaseMasterFlag :one
+SELECT master_release
+FROM vinyl_release
+WHERE vinyl_id = ? AND release_id = ?
+LIMIT 1
+`
+
+type GetReleaseMasterFlagParams struct {
+	VinylID   int64 `db:"vinyl_id"`
+	ReleaseID int64 `db:"release_id"`
+}
+
+func (q *Queries) GetReleaseMasterFlag(ctx context.Context, arg GetReleaseMasterFlagParams) (int64, error) {
+	row := q.queryRow(ctx, q.getReleaseMasterFlagStmt, getReleaseMasterFlag, arg.VinylID, arg.ReleaseID)
+	var master_release int64
+	err := row.Scan(&master_release)
+	return master_release, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
@@ -265,19 +580,20 @@ SELECT
     vu.vinyl_title,
     vu.vinyl_artist,
     vu.master_id,
+    vu.master_year,
     vu.styles,
     vu.genres,
-    CAST(substr(vr.released, 1, 4) AS INTEGER) AS vinyl_pressing_year,
+    COALESCE(vu.master_year, CAST(substr(vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
     vr.country,
     vr.lowest_price AS recent_price,
-    vr.released,
-    vr.image_extension,
-    vr.cover_raw_blob,
-    vr.cover_embedding
+    COALESCE(vr.released, CAST(vu.master_year AS TEXT), '') AS released,
+    COALESCE(vr.image_extension, '') AS image_extension,
+    COALESCE(vr.cover_raw_blob, X'') AS cover_raw_blob,
+    COALESCE(vr.cover_embedding, X'') AS cover_embedding
 FROM vinyl_unique vu
-JOIN vinyl_release vr
+LEFT JOIN vinyl_release vr
     ON vr.vinyl_id = vu.vinyl_id
-   AND vr.master_release = 1
+   AND vr.release_id = 0
 WHERE vu.vinyl_id = ?
 `
 
@@ -286,6 +602,7 @@ type GetVinylRecordByIDRow struct {
 	VinylTitle        string   `db:"vinyl_title"`
 	VinylArtist       string   `db:"vinyl_artist"`
 	MasterID          *int64   `db:"master_id"`
+	MasterYear        *int64   `db:"master_year"`
 	Styles            *string  `db:"styles"`
 	Genres            *string  `db:"genres"`
 	VinylPressingYear int64    `db:"vinyl_pressing_year"`
@@ -305,6 +622,7 @@ func (q *Queries) GetVinylRecordByID(ctx context.Context, vinylID int64) (GetVin
 		&i.VinylTitle,
 		&i.VinylArtist,
 		&i.MasterID,
+		&i.MasterYear,
 		&i.Styles,
 		&i.Genres,
 		&i.VinylPressingYear,
@@ -340,6 +658,403 @@ func (q *Queries) InsertVinylPlay(ctx context.Context, arg InsertVinylPlayParams
 		arg.PlayedDate,
 	)
 	return err
+}
+
+const listOwnedPressings = `-- name: ListOwnedPressings :many
+SELECT DISTINCT vinyl_id, release_id
+FROM vinyl_plays
+WHERE user_id = ? AND release_id != 0
+`
+
+type ListOwnedPressingsRow struct {
+	VinylID   int64 `db:"vinyl_id"`
+	ReleaseID int64 `db:"release_id"`
+}
+
+func (q *Queries) ListOwnedPressings(ctx context.Context, userID int64) ([]ListOwnedPressingsRow, error) {
+	rows, err := q.query(ctx, q.listOwnedPressingsStmt, listOwnedPressings, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOwnedPressingsRow{}
+	for rows.Next() {
+		var i ListOwnedPressingsRow
+		if err := rows.Scan(&i.VinylID, &i.ReleaseID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPressingOptionRows = `-- name: ListPressingOptionRows :many
+SELECT
+    vu.vinyl_id,
+    vu.vinyl_title,
+    vu.vinyl_artist,
+    vu.master_id,
+    vu.styles,
+    vu.genres,
+    COALESCE(vrc.released_year, 0) AS vinyl_pressing_year,
+    NULLIF(vrc.country, '') AS country,
+    COALESCE(vr.released, '') AS released,
+    vr.lowest_price,
+    COALESCE(vr.image_extension, '') AS image_extension,
+    vrc.release_id,
+    NULLIF(vrc.label, '') AS label,
+    NULLIF(vrc.release_format, '') AS release_format,
+    NULLIF(vrc.country, '') AS release_country,
+    NULLIF(vrc.cover_uri, '') AS cover_uri,
+    CASE WHEN length(vr.cover_raw_blob) > 0 THEN 1 ELSE 0 END AS has_blob,
+    vr.notes,
+    CASE WHEN vrc.release_id = (
+        SELECT vp.release_id
+        FROM vinyl_plays vp
+        WHERE vp.user_id = ? AND vp.vinyl_id = ?
+        ORDER BY vp.played_date DESC, vp.play DESC
+        LIMIT 1
+    ) THEN 1 ELSE 0 END AS is_current
+FROM vinyl_releases_check vrc
+JOIN vinyl_unique vu ON vu.vinyl_id = vrc.vinyl_id
+LEFT JOIN vinyl_release vr
+    ON vr.vinyl_id = vrc.vinyl_id
+   AND vr.release_id = vrc.release_id
+WHERE vrc.vinyl_id = ?
+ORDER BY vrc.released_year ASC, vrc.release_id ASC
+`
+
+type ListPressingOptionRowsParams struct {
+	UserID    int64 `db:"user_id"`
+	VinylID   int64 `db:"vinyl_id"`
+	VinylID_2 int64 `db:"vinyl_id_2"`
+}
+
+type ListPressingOptionRowsRow struct {
+	VinylID           int64       `db:"vinyl_id"`
+	VinylTitle        string      `db:"vinyl_title"`
+	VinylArtist       string      `db:"vinyl_artist"`
+	MasterID          *int64      `db:"master_id"`
+	Styles            *string     `db:"styles"`
+	Genres            *string     `db:"genres"`
+	VinylPressingYear int64       `db:"vinyl_pressing_year"`
+	Country           interface{} `db:"country"`
+	Released          string      `db:"released"`
+	LowestPrice       *float64    `db:"lowest_price"`
+	ImageExtension    string      `db:"image_extension"`
+	ReleaseID         int64       `db:"release_id"`
+	Label             interface{} `db:"label"`
+	ReleaseFormat     interface{} `db:"release_format"`
+	ReleaseCountry    interface{} `db:"release_country"`
+	CoverUri          interface{} `db:"cover_uri"`
+	HasBlob           int64       `db:"has_blob"`
+	Notes             *string     `db:"notes"`
+	IsCurrent         int64       `db:"is_current"`
+}
+
+func (q *Queries) ListPressingOptionRows(ctx context.Context, arg ListPressingOptionRowsParams) ([]ListPressingOptionRowsRow, error) {
+	rows, err := q.query(ctx, q.listPressingOptionRowsStmt, listPressingOptionRows, arg.UserID, arg.VinylID, arg.VinylID_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPressingOptionRowsRow{}
+	for rows.Next() {
+		var i ListPressingOptionRowsRow
+		if err := rows.Scan(
+			&i.VinylID,
+			&i.VinylTitle,
+			&i.VinylArtist,
+			&i.MasterID,
+			&i.Styles,
+			&i.Genres,
+			&i.VinylPressingYear,
+			&i.Country,
+			&i.Released,
+			&i.LowestPrice,
+			&i.ImageExtension,
+			&i.ReleaseID,
+			&i.Label,
+			&i.ReleaseFormat,
+			&i.ReleaseCountry,
+			&i.CoverUri,
+			&i.HasBlob,
+			&i.Notes,
+			&i.IsCurrent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReleaseScanRows = `-- name: ListReleaseScanRows :many
+SELECT
+    vu.vinyl_id,
+    vu.vinyl_title,
+    vu.vinyl_artist,
+    vu.master_id,
+    vu.styles,
+    vu.genres,
+    COALESCE(vu.master_year, CAST(substr(master_vr.released, 1, 4) AS INTEGER), CAST(substr(vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
+    COALESCE(NULLIF(vrc.country, ''), vr.country) AS country,
+    vr.released,
+    vr.lowest_price,
+    vr.image_extension,
+    vr.cover_embedding,
+    vr.release_id,
+    vrc.label,
+    vrc.release_format,
+    COALESCE(NULLIF(vrc.country, ''), vr.country) AS release_country,
+    vrc.cover_uri,
+    CASE WHEN length(vr.cover_raw_blob) > 0 THEN 1 ELSE 0 END AS has_blob,
+    vr.notes
+FROM vinyl_release vr
+JOIN vinyl_unique vu ON vu.vinyl_id = vr.vinyl_id
+LEFT JOIN vinyl_releases_check vrc
+    ON vrc.vinyl_id = vr.vinyl_id
+   AND vrc.release_id = vr.release_id
+LEFT JOIN vinyl_release master_vr
+    ON master_vr.vinyl_id = vr.vinyl_id
+   AND master_vr.release_id = 0
+WHERE length(vr.cover_embedding) > 0
+  AND length(vr.cover_raw_blob) > 0
+`
+
+type ListReleaseScanRowsRow struct {
+	VinylID           int64    `db:"vinyl_id"`
+	VinylTitle        string   `db:"vinyl_title"`
+	VinylArtist       string   `db:"vinyl_artist"`
+	MasterID          *int64   `db:"master_id"`
+	Styles            *string  `db:"styles"`
+	Genres            *string  `db:"genres"`
+	VinylPressingYear int64    `db:"vinyl_pressing_year"`
+	Country           *string  `db:"country"`
+	Released          string   `db:"released"`
+	LowestPrice       *float64 `db:"lowest_price"`
+	ImageExtension    string   `db:"image_extension"`
+	CoverEmbedding    []byte   `db:"cover_embedding"`
+	ReleaseID         int64    `db:"release_id"`
+	Label             *string  `db:"label"`
+	ReleaseFormat     *string  `db:"release_format"`
+	ReleaseCountry    *string  `db:"release_country"`
+	CoverUri          *string  `db:"cover_uri"`
+	HasBlob           int64    `db:"has_blob"`
+	Notes             *string  `db:"notes"`
+}
+
+func (q *Queries) ListReleaseScanRows(ctx context.Context) ([]ListReleaseScanRowsRow, error) {
+	rows, err := q.query(ctx, q.listReleaseScanRowsStmt, listReleaseScanRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReleaseScanRowsRow{}
+	for rows.Next() {
+		var i ListReleaseScanRowsRow
+		if err := rows.Scan(
+			&i.VinylID,
+			&i.VinylTitle,
+			&i.VinylArtist,
+			&i.MasterID,
+			&i.Styles,
+			&i.Genres,
+			&i.VinylPressingYear,
+			&i.Country,
+			&i.Released,
+			&i.LowestPrice,
+			&i.ImageExtension,
+			&i.CoverEmbedding,
+			&i.ReleaseID,
+			&i.Label,
+			&i.ReleaseFormat,
+			&i.ReleaseCountry,
+			&i.CoverUri,
+			&i.HasBlob,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserScanRows = `-- name: ListUserScanRows :many
+WITH current_release AS (
+    SELECT vinyl_id, release_id
+    FROM (
+        SELECT
+            vinyl_id,
+            release_id,
+            ROW_NUMBER() OVER (PARTITION BY vinyl_id ORDER BY played_date DESC, play DESC) AS rn
+        FROM vinyl_plays
+        WHERE user_id = ?
+    )
+    WHERE rn = 1
+)
+SELECT
+    vu.vinyl_id,
+    vu.vinyl_title,
+    vu.vinyl_artist,
+    vu.master_id,
+    vu.styles,
+    vu.genres,
+    COALESCE(vu.master_year, CAST(substr(master_vr.released, 1, 4) AS INTEGER), CAST(substr(scan_vr.released, 1, 4) AS INTEGER), 0) AS vinyl_pressing_year,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN master_vr.country ELSE COALESCE(NULLIF(vrc.country, ''), scan_vr.country) END AS country,
+    COALESCE(master_vr.released, scan_vr.released, CAST(vu.master_year AS TEXT), '') AS released,
+    scan_vr.lowest_price,
+    scan_vr.image_extension,
+    scan_vr.cover_embedding,
+    scan_vr.release_id,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN NULL ELSE vrc.label END AS label,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN NULL ELSE vrc.release_format END AS release_format,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN NULL ELSE COALESCE(NULLIF(vrc.country, ''), scan_vr.country) END AS release_country,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN NULL ELSE vrc.cover_uri END AS cover_uri,
+    CASE WHEN length(scan_vr.cover_raw_blob) > 0 THEN 1 ELSE 0 END AS has_blob,
+    CASE WHEN cr.release_id IS NULL OR cr.release_id = 0 THEN NULL ELSE scan_vr.notes END AS notes
+FROM vinyl_unique vu
+JOIN vinyl_release master_vr
+    ON master_vr.vinyl_id = vu.vinyl_id
+   AND master_vr.release_id = 0
+LEFT JOIN current_release cr
+    ON cr.vinyl_id = vu.vinyl_id
+LEFT JOIN vinyl_release owned_vr
+    ON owned_vr.vinyl_id = vu.vinyl_id
+   AND owned_vr.release_id = cr.release_id
+   AND cr.release_id != 0
+JOIN vinyl_release scan_vr
+    ON scan_vr.vinyl_id = vu.vinyl_id
+   AND scan_vr.release_id = CASE WHEN owned_vr.release_id IS NOT NULL THEN owned_vr.release_id ELSE 0 END
+LEFT JOIN vinyl_releases_check vrc
+    ON vrc.vinyl_id = scan_vr.vinyl_id
+   AND vrc.release_id = scan_vr.release_id
+WHERE length(scan_vr.cover_embedding) > 0
+  AND length(scan_vr.cover_raw_blob) > 0
+`
+
+type ListUserScanRowsRow struct {
+	VinylID           int64       `db:"vinyl_id"`
+	VinylTitle        string      `db:"vinyl_title"`
+	VinylArtist       string      `db:"vinyl_artist"`
+	MasterID          *int64      `db:"master_id"`
+	Styles            *string     `db:"styles"`
+	Genres            *string     `db:"genres"`
+	VinylPressingYear int64       `db:"vinyl_pressing_year"`
+	Country           interface{} `db:"country"`
+	Released          string      `db:"released"`
+	LowestPrice       *float64    `db:"lowest_price"`
+	ImageExtension    string      `db:"image_extension"`
+	CoverEmbedding    []byte      `db:"cover_embedding"`
+	ReleaseID         int64       `db:"release_id"`
+	Label             interface{} `db:"label"`
+	ReleaseFormat     interface{} `db:"release_format"`
+	ReleaseCountry    interface{} `db:"release_country"`
+	CoverUri          interface{} `db:"cover_uri"`
+	HasBlob           int64       `db:"has_blob"`
+	Notes             interface{} `db:"notes"`
+}
+
+func (q *Queries) ListUserScanRows(ctx context.Context, userID int64) ([]ListUserScanRowsRow, error) {
+	rows, err := q.query(ctx, q.listUserScanRowsStmt, listUserScanRows, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserScanRowsRow{}
+	for rows.Next() {
+		var i ListUserScanRowsRow
+		if err := rows.Scan(
+			&i.VinylID,
+			&i.VinylTitle,
+			&i.VinylArtist,
+			&i.MasterID,
+			&i.Styles,
+			&i.Genres,
+			&i.VinylPressingYear,
+			&i.Country,
+			&i.Released,
+			&i.LowestPrice,
+			&i.ImageExtension,
+			&i.CoverEmbedding,
+			&i.ReleaseID,
+			&i.Label,
+			&i.ReleaseFormat,
+			&i.ReleaseCountry,
+			&i.CoverUri,
+			&i.HasBlob,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserVinylPlayDates = `-- name: ListUserVinylPlayDates :many
+SELECT play, played_date
+FROM vinyl_plays
+WHERE user_id = ? AND vinyl_id = ?
+ORDER BY played_date ASC, play ASC
+`
+
+type ListUserVinylPlayDatesParams struct {
+	UserID  int64 `db:"user_id"`
+	VinylID int64 `db:"vinyl_id"`
+}
+
+type ListUserVinylPlayDatesRow struct {
+	Play       int64  `db:"play"`
+	PlayedDate string `db:"played_date"`
+}
+
+func (q *Queries) ListUserVinylPlayDates(ctx context.Context, arg ListUserVinylPlayDatesParams) ([]ListUserVinylPlayDatesRow, error) {
+	rows, err := q.query(ctx, q.listUserVinylPlayDatesStmt, listUserVinylPlayDates, arg.UserID, arg.VinylID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserVinylPlayDatesRow{}
+	for rows.Next() {
+		var i ListUserVinylPlayDatesRow
+		if err := rows.Scan(&i.Play, &i.PlayedDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUsers = `-- name: ListUsers :many
@@ -395,18 +1110,23 @@ INSERT INTO vinyl_unique(
     vinyl_title,
     vinyl_artist,
     master_id,
+    master_year,
     styles,
     genres
-) VALUES (?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT
-DO UPDATE SET vinyl_title = vinyl_title
-RETURNING vinyl_id, vinyl_title, vinyl_artist, master_id, styles, genres
+DO UPDATE SET
+    master_year = COALESCE(excluded.master_year, vinyl_unique.master_year),
+    styles = COALESCE(excluded.styles, vinyl_unique.styles),
+    genres = COALESCE(excluded.genres, vinyl_unique.genres)
+RETURNING vinyl_id, vinyl_title, vinyl_artist, master_id, master_year, styles, genres
 `
 
 type RegisterVinylUniqueParams struct {
 	VinylTitle  string  `db:"vinyl_title"`
 	VinylArtist string  `db:"vinyl_artist"`
 	MasterID    *int64  `db:"master_id"`
+	MasterYear  *int64  `db:"master_year"`
 	Styles      *string `db:"styles"`
 	Genres      *string `db:"genres"`
 }
@@ -416,6 +1136,7 @@ func (q *Queries) RegisterVinylUnique(ctx context.Context, arg RegisterVinylUniq
 		arg.VinylTitle,
 		arg.VinylArtist,
 		arg.MasterID,
+		arg.MasterYear,
 		arg.Styles,
 		arg.Genres,
 	)
@@ -425,6 +1146,7 @@ func (q *Queries) RegisterVinylUnique(ctx context.Context, arg RegisterVinylUniq
 		&i.VinylTitle,
 		&i.VinylArtist,
 		&i.MasterID,
+		&i.MasterYear,
 		&i.Styles,
 		&i.Genres,
 	)
@@ -507,4 +1229,60 @@ func (q *Queries) UpsertVinylRelease(ctx context.Context, arg UpsertVinylRelease
 		&i.CoverEmbedding,
 	)
 	return i, err
+}
+
+const upsertVinylReleaseCheck = `-- name: UpsertVinylReleaseCheck :exec
+INSERT INTO vinyl_releases_check(vinyl_id, release_id, label, country, release_format, released_year, cover_uri)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(vinyl_id, release_id) DO UPDATE SET
+    label = excluded.label,
+    country = excluded.country,
+    release_format = excluded.release_format,
+    released_year = excluded.released_year,
+    cover_uri = excluded.cover_uri
+`
+
+type UpsertVinylReleaseCheckParams struct {
+	VinylID       int64  `db:"vinyl_id"`
+	ReleaseID     int64  `db:"release_id"`
+	Label         string `db:"label"`
+	Country       string `db:"country"`
+	ReleaseFormat string `db:"release_format"`
+	ReleasedYear  int64  `db:"released_year"`
+	CoverUri      string `db:"cover_uri"`
+}
+
+func (q *Queries) UpsertVinylReleaseCheck(ctx context.Context, arg UpsertVinylReleaseCheckParams) error {
+	_, err := q.exec(ctx, q.upsertVinylReleaseCheckStmt, upsertVinylReleaseCheck,
+		arg.VinylID,
+		arg.ReleaseID,
+		arg.Label,
+		arg.Country,
+		arg.ReleaseFormat,
+		arg.ReleasedYear,
+		arg.CoverUri,
+	)
+	return err
+}
+
+const userOwnsMaster = `-- name: UserOwnsMaster :one
+SELECT EXISTS(
+    SELECT 1
+    FROM vinyl_plays vp
+    JOIN vinyl_unique vu ON vu.vinyl_id = vp.vinyl_id
+    WHERE vp.user_id = ?
+      AND vu.master_id = ?
+)
+`
+
+type UserOwnsMasterParams struct {
+	UserID   int64  `db:"user_id"`
+	MasterID *int64 `db:"master_id"`
+}
+
+func (q *Queries) UserOwnsMaster(ctx context.Context, arg UserOwnsMasterParams) (int64, error) {
+	row := q.queryRow(ctx, q.userOwnsMasterStmt, userOwnsMaster, arg.UserID, arg.MasterID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }

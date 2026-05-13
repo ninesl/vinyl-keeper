@@ -27,6 +27,7 @@ type VinylRecord struct {
 	VinylArtist       string
 	VinylPressingYear int64
 	MasterID          *int64
+	MasterYear        *int64
 	Genres            *string
 	Styles            *string
 	Country           *string

@@ -48,6 +48,7 @@ type VinylUnique struct {
 	VinylTitle  string  `db:"vinyl_title"`
 	VinylArtist string  `db:"vinyl_artist"`
 	MasterID    *int64  `db:"master_id"`
+	MasterYear  *int64  `db:"master_year"`
 	Styles      *string `db:"styles"`
 	Genres      *string `db:"genres"`
 }
