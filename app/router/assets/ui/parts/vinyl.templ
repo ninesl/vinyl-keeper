@@ -177,7 +177,7 @@ func choiceValue(mode types.VinylMode, v types.Vinyl) string {
 
 func isChoiceChecked(mode types.VinylMode, i int, v types.Vinyl, selectedReleaseID int64) bool {
 	if mode == types.ModePressingChoice {
-		return selectedReleaseID > 0 && v.ReleaseID() == selectedReleaseID
+		return v.ReleaseID() == selectedReleaseID
 	}
 	return i == 0
 }

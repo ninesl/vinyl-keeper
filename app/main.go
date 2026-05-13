@@ -256,9 +256,8 @@ func main() {
 			RegisterVinylID: func(ctx context.Context, masterID int, userID int64) (vinyl.VinylRecord, error) {
 				return keeper.RegisterVinylFromMaster(ctx, masterID, userID)
 			},
-			FindExistingVinyl:   keeper.FindExistingVinyl,
-			GetPrimaryReleaseID: keeper.GetPrimaryReleaseID,
-			GetUserID:           router.GetUserID,
+			FindExistingVinyl: keeper.FindExistingVinyl,
+			GetUserID:         router.GetUserID,
 		}))
 
 	// Delete vinyl (HTMX endpoint) — triggers vinyl-registered on success

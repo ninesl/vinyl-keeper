@@ -275,8 +275,12 @@ func ScanCoverHTMLHandler(params ScanHandlerParams) http.HandlerFunc {
 		}
 
 		releaseCandidates := []vinyl.ReleaseCandidate{}
+		userID := int64(-1)
+		if params.GetUserID != nil {
+			userID = params.GetUserID(r)
+		}
 		if params.FindClosestReleaseCandidates != nil {
-			releaseCandidates = params.FindClosestReleaseCandidates(embedding, 4, params.GetUserID(r))
+			releaseCandidates = params.FindClosestReleaseCandidates(embedding, 4, userID)
 		}
 		if len(releaseCandidates) == 0 {
 			vinylCandidates := []vinyl.VinylRecord{}
@@ -326,7 +330,7 @@ func renderAcceptedScanResult(w http.ResponseWriter, r *http.Request, params Sca
 				return
 			}
 		}
-	} else if params.PlayRecord != nil {
+	} else if params.PlayRecord != nil && releaseID == 0 {
 		userID := params.GetUserID(r)
 		if userID >= 0 {
 			if err := params.PlayRecord(vinylResult.ID(), userID); err != nil {
@@ -457,11 +461,10 @@ func embeddingFromBlob(b []byte) (Embedding, error) {
 }
 
 type RegisterHandlerParams struct {
-	RegisterVinyl       func(ctx context.Context, artist, album string, userID int64) (vinyl.VinylRecord, error)
-	RegisterVinylID     func(ctx context.Context, masterID int, userID int64) (vinyl.VinylRecord, error)
-	FindExistingVinyl   func(artist, album string, masterID *int64) *vinyl.VinylRecord
-	GetPrimaryReleaseID func(vinylID int64) (int64, error)
-	GetUserID           func(*http.Request) int64
+	RegisterVinyl     func(ctx context.Context, artist, album string, userID int64) (vinyl.VinylRecord, error)
+	RegisterVinylID   func(ctx context.Context, masterID int, userID int64) (vinyl.VinylRecord, error)
+	FindExistingVinyl func(artist, album string, masterID *int64) *vinyl.VinylRecord
+	GetUserID         func(*http.Request) int64
 }
 
 type RegisterResult struct {
@@ -527,13 +530,6 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 func renderRegisterResult(w http.ResponseWriter, r *http.Request, params RegisterHandlerParams, record vinyl.VinylRecord) {
 	SetHXTrigger(w, values.EventVinylRegistered)
 	view := routertypes.FromVinylRecord(record)
-	if params.GetPrimaryReleaseID != nil {
-		if releaseID, releaseErr := params.GetPrimaryReleaseID(record.VinylID); releaseErr == nil {
-			view.ReleaseIDVal = releaseID
-		} else {
-			fmt.Printf("[Register] failed to resolve primary release vinyl_id=%d err=%v\n", record.VinylID, releaseErr)
-		}
-	}
 	parts.RegisterChoiceCards([]routertypes.Vinyl{view}).Render(r.Context(), w)
 }
 
