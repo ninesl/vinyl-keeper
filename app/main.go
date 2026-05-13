@@ -239,6 +239,14 @@ func main() {
 			GetIndex:           keeper.GetVinylIndex,
 		}))
 
+	r.Route(http.MethodDelete,
+		values.EndpointMyVinyl+values.EndpointDelete,
+		router.DeleteUserVinylHandler(router.DeleteUserVinylHandlerParams{
+			GetUserID:       router.GetUserID,
+			DeleteUserVinyl: keeper.DeleteUserVinyl,
+			GetIndex:        keeper.GetVinylIndex,
+		}))
+
 	log.Println("[Init] Registering embedding routes")
 	embeddingRoutes(r, keeper)
 

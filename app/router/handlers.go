@@ -431,6 +431,34 @@ func ChangePressingHandler(params ChangePressingHandlerParams) http.HandlerFunc 
 	}
 }
 
+type DeleteUserVinylHandlerParams struct {
+	GetUserID        func(*http.Request) int64
+	DeleteUserVinyl  func(vinylID, userID int64) error
+	GetIndex         func() *vinyl.VinylIndex
+}
+
+func DeleteUserVinylHandler(params DeleteUserVinylHandlerParams) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", values.ContentTypeHTML)
+
+		vinylID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue(values.ParamVinylID)), 10, 64)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			parts.ErrorMessage("Invalid vinyl ID").Render(r.Context(), w)
+			return
+		}
+
+		if err := params.DeleteUserVinyl(vinylID, params.GetUserID(r)); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			parts.ErrorMessage("Failed to remove from collection: "+err.Error()).Render(r.Context(), w)
+			return
+		}
+
+		SetHXTrigger(w, values.EventVinylRegistered)
+		ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, params.GetIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist").Render(r.Context(), w)
+	}
+}
+
 func cosineSimilarity(a, b Embedding) float64 {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0

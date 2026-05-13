@@ -77,6 +77,7 @@ type Keeper interface {
 	NumPlays(vinylID, userID int64) int     // Number of plays this vinylID has had for this user
 	AllVinyl() []vinyl.VinylRecord
 	MyVinyl(userID int64) []vinyl.VinylWithPlayData // returns all vinyl user has played, ordered by last_played DESC
+	DeleteUserVinyl(vinylID, userID int64) error    // removes a record from one user's collection only
 	DeleteVinyl(vinylID int64) error                // removes vinyl from DB and in-memory caches
 }
 
@@ -1250,6 +1251,20 @@ func (k *keeper) DeleteVinyl(vinylID int64) error {
 		delete(k.userNumPlays[userID], vinylID)
 	}
 	k.needsRebuild = true // Mark index for rebuild
+	k.mu.Unlock()
+
+	return nil
+}
+
+func (k *keeper) DeleteUserVinyl(vinylID, userID int64) error {
+	if err := k.queries.DeleteUserVinylPlays(k.ctx, vinyl.DeleteUserVinylPlaysParams{UserID: userID, VinylID: vinylID}); err != nil {
+		return fmt.Errorf("failed to remove vinyl %d from user %d collection: %w", vinylID, userID, err)
+	}
+
+	k.mu.Lock()
+	if k.userNumPlays[userID] != nil {
+		delete(k.userNumPlays[userID], vinylID)
+	}
 	k.mu.Unlock()
 
 	return nil
