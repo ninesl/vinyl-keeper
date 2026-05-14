@@ -388,6 +388,12 @@ templ RegisterChoiceCards(vinyls []types.Vinyl) {
 	@VinylChoiceCards(vinyls, nil, types.ModeRegisterChoice, 0, 0, "", "")
 }
 
+templ RegisteredAlbumCard(v types.Vinyl) {
+	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-2">
+		@VinylViewCard(v, types.ModeMyAlbum, types.VinylViewOpts{})
+	</div>
+}
+
 templ PressingChoiceCards(selected types.Vinyl, selectedReleaseID int64, options []types.Vinyl) {
 	@VinylChoiceCards(options, nil, types.ModePressingChoice, selected.ID(), selectedReleaseID, selected.Title(), selected.Artist())
 }

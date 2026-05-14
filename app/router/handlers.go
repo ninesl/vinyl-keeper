@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/pages"
@@ -557,8 +558,21 @@ func RegisterSubmitHandler(params RegisterHandlerParams) http.HandlerFunc {
 
 func renderRegisterResult(w http.ResponseWriter, r *http.Request, params RegisterHandlerParams, record vinyl.VinylRecord) {
 	SetHXTrigger(w, values.EventVinylRegistered)
-	view := routertypes.FromVinylRecord(record)
-	parts.RegisterChoiceCards([]routertypes.Vinyl{view}).Render(r.Context(), w)
+	plays := int64(0)
+	added := recordDateOrToday(record)
+	view := routertypes.VinylView{
+		Record:       record,
+		ReleaseIDVal: 0,
+		PlaysVal:     &plays,
+		AddedVal:     &added,
+		LastVal:      &added,
+		HasBlobVal:   true,
+	}
+	parts.RegisteredAlbumCard(view).Render(r.Context(), w)
+}
+
+func recordDateOrToday(_ vinyl.VinylRecord) string {
+	return time.Now().Format("2006-01-02")
 }
 
 type DeleteHandlerParams struct {
