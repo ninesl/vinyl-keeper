@@ -99,7 +99,11 @@ func ScannerPageHandler() http.HandlerFunc {
 func ModalMyCollectionHandler(
 	getIndex func() *vinyl.VinylIndex,
 ) http.HandlerFunc {
-	return RenderHandler(ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, getIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist"))
+	return RenderHandler(myCollectionModalPanel(getIndex()))
+}
+
+func myCollectionModalPanel(index *vinyl.VinylIndex) templ.Component {
+	return ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, index, "modal-collection-scope", "modal-collection-zone", "modal-collection-filter-artist")
 }
 
 func setUserCookie(w http.ResponseWriter, userID int64) {
@@ -428,7 +432,7 @@ func ChangePressingHandler(params ChangePressingHandlerParams) http.HandlerFunc 
 		}
 
 		SetHXTrigger(w, values.EventVinylRegistered)
-		ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, params.GetIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist").Render(r.Context(), w)
+		myCollectionModalPanel(params.GetIndex()).Render(r.Context(), w)
 	}
 }
 
@@ -456,7 +460,7 @@ func DeleteUserVinylHandler(params DeleteUserVinylHandlerParams) http.HandlerFun
 		}
 
 		SetHXTrigger(w, values.EventVinylRegistered)
-		ui.FilterPanel(values.EndpointMyVinyl+values.EndpointFilter, params.GetIndex(), "my-collection-scope", "my-collection-zone", "my-collection-filter-artist").Render(r.Context(), w)
+		myCollectionModalPanel(params.GetIndex()).Render(r.Context(), w)
 	}
 }
 

@@ -270,8 +270,8 @@ templ MyAlbumSpoilerOverlay(d VinylDisplay) {
 					}
 					<form
 						hx-delete={ values.EndpointMyVinyl + values.EndpointDelete }
-						hx-target="#my-collection-scope"
-						hx-swap="outerHTML"
+						hx-target={ "#" + values.IDModalZoneContent }
+						hx-swap="innerHTML"
 						onclick="event.stopPropagation();"
 						onsubmit="event.stopPropagation(); return confirm('Remove this record from your collection?');"
 					>
