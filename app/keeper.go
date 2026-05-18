@@ -71,6 +71,7 @@ func recordDiscogsRequestResult(success bool) {
 type Keeper interface {
 	RegisterVinylUnique(args RegisterVinylParams) (vinyl.VinylRecord, error)
 	RegisterVinylFromMaster(ctx context.Context, masterID int, userID int64) (vinyl.VinylRecord, error)
+	RegisterVinylFromSearch(getMasterID func(album, artist string) (int, error)) func(context.Context, string, string, int64) (vinyl.VinylRecord, error)
 
 	KeepRecord(vinylID, userID int64) error // makes an entry for the record, returns an error if exists already
 	PlayRecord(vinylID, userID int64) error // ++ to the numPlays of the vinylID, saves the record if not already logged
@@ -393,6 +394,16 @@ func (k *keeper) registerVinylWithVersionsAndOwnership(ctx context.Context, args
 	k.mu.Unlock()
 
 	return record, nil
+}
+
+func (k *keeper) RegisterVinylFromSearch(getMasterID func(album, artist string) (int, error)) func(context.Context, string, string, int64) (vinyl.VinylRecord, error) {
+	return func(ctx context.Context, artist, album string, userID int64) (vinyl.VinylRecord, error) {
+		masterID, err := getMasterID(album, artist)
+		if err != nil {
+			return vinyl.VinylRecord{}, err
+		}
+		return k.RegisterVinylFromMaster(ctx, masterID, userID)
+	}
 }
 
 func (k *keeper) GetPrimaryReleaseID(vinylID int64) (int64, error) {

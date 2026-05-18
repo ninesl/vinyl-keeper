@@ -46,9 +46,23 @@ templ Nav(signedInUserName string, signedIn bool) {
 		</div>
 	</nav>
 	@dialog.Dialog(dialog.Props{ID: "modal-zone-dialog"}) {
-		@dialog.Content(dialog.ContentProps{Class: "w-[min(64rem,96vw)] max-h-[85vh] overflow-auto"}) {
+		@dialog.Content(dialog.ContentProps{Class: "max-h-[85vh] overflow-auto"}) {
 			<div
 				id={ values.IDModalZoneContent }
+				hx-swap="innerHTML"
+			></div>
+		}
+	}
+	@dialog.Dialog(dialog.Props{ID: "my-collection-dialog"}) {
+		@dialog.Content(dialog.ContentProps{
+			Class: "h-dvh w-screen max-w-none max-h-none rounded-none overflow-auto sm:max-w-none [&_[data-tui-dialog-panel]]:w-screen [&_[data-tui-dialog-panel]]:max-w-none",
+			Attributes: templ.Attributes{
+				"style": "width: 100vw; max-width: none;",
+			},
+		}) {
+			<div
+				id={ values.IDMyCollectionModalZoneContent }
+				class="w-full"
 				hx-swap="innerHTML"
 			></div>
 		}
@@ -63,7 +77,7 @@ templ SignInButtonZone(userName string) {
 		hx-swap="outerHTML"
 	>
 		@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
-			"hx-get":    values.EndpointModal + "/sign-in",
+			"hx-get":    values.EndpointModal + values.EndpointSignInModal,
 			"hx-target": "#" + values.IDModalZoneContent,
 			"hx-swap":   "innerHTML",
 		}}) {
@@ -86,14 +100,14 @@ templ NavAuthButtons(signedIn bool) {
 	// Use contents display so children participate in parent's flex layout
 	<div
 		class="contents"
-		hx-get={ values.EndpointNavAuthButtons }
+		hx-get={ values.EndpointAuthButtons }
 		hx-trigger={ fmt.Sprintf("%s from:body, %s from:body", values.EventUserSignedIn, values.EventUserSignedOut) }
 		hx-swap="outerHTML"
 	>
 		if signedIn {
-			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
-				"hx-get":    values.EndpointModal + "/my-collection",
-				"hx-target": "#" + values.IDModalZoneContent,
+			@dialog.Trigger(dialog.TriggerProps{For: "my-collection-dialog", Attributes: templ.Attributes{
+				"hx-get":    values.EndpointModal + values.EndpointMyCollection,
+				"hx-target": "#" + values.IDMyCollectionModalZoneContent,
 				"hx-swap":   "innerHTML",
 			}}) {
 				@button.Button(button.Props{Variant: button.VariantOutline, Size: button.SizeSm}) {
@@ -109,7 +123,7 @@ templ NavAuthButtons(signedIn bool) {
 		}
 		if signedIn {
 			@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
-				"hx-get":    values.EndpointModal + "/register",
+				"hx-get":    values.EndpointModal + values.EndpointRegister,
 				"hx-target": "#" + values.IDModalZoneContent,
 				"hx-swap":   "innerHTML",
 			}}) {

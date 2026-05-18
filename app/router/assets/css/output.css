@@ -21,6 +21,7 @@
     --spacing: 0.25rem;
     --container-sm: 24rem;
     --container-lg: 32rem;
+    --container-xl: 36rem;
     --container-7xl: 80rem;
     --text-xs: 0.75rem;
     --text-xs--line-height: calc(1 / 0.75);
@@ -599,6 +600,9 @@
   .h-auto {
     height: auto;
   }
+  .h-dvh {
+    height: 100dvh;
+  }
   .h-full {
     height: 100%;
   }
@@ -628,6 +632,9 @@
   }
   .max-h-\[calc\(85vh-16rem\)\] {
     max-height: calc(85vh - 16rem);
+  }
+  .max-h-none {
+    max-height: none;
   }
   .min-h-0 {
     min-height: calc(var(--spacing) * 0);
@@ -689,9 +696,6 @@
   .w-\[350px\] {
     width: 350px;
   }
-  .w-\[min\(64rem\,96vw\)\] {
-    width: min(64rem, 96vw);
-  }
   .w-\[var\(--cell-size\)\] {
     width: var(--cell-size);
   }
@@ -713,6 +717,9 @@
   .w-px {
     width: 1px;
   }
+  .w-screen {
+    width: 100vw;
+  }
   .\!max-w-full {
     max-width: 100% !important;
   }
@@ -724,6 +731,9 @@
   }
   .max-w-\[min\(24rem\,calc\(100vw-2rem\)\)\] {
     max-width: min(24rem, calc(100vw - 2rem));
+  }
+  .max-w-none {
+    max-width: none;
   }
   .min-w-0 {
     min-width: calc(var(--spacing) * 0);
@@ -841,6 +851,9 @@
   }
   .grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .grid-cols-\[0_1fr\] {
     grid-template-columns: 0 1fr;
@@ -2903,6 +2916,16 @@
       max-width: var(--container-lg);
     }
   }
+  .sm\:max-w-none {
+    @media (width >= 40rem) {
+      max-width: none;
+    }
+  }
+  .sm\:max-w-xl {
+    @media (width >= 40rem) {
+      max-width: var(--container-xl);
+    }
+  }
   .sm\:flex-1 {
     @media (width >= 40rem) {
       flex: 1;
@@ -3124,6 +3147,16 @@
       &[data-tui-tabs-state="active"] {
         color: var(--foreground);
       }
+    }
+  }
+  .\[\&_\[data-tui-dialog-panel\]\]\:w-screen {
+    & [data-tui-dialog-panel] {
+      width: 100vw;
+    }
+  }
+  .\[\&_\[data-tui-dialog-panel\]\]\:max-w-none {
+    & [data-tui-dialog-panel] {
+      max-width: none;
     }
   }
   .\[\&_\[data-tui-dialog-panel\]\]\:gap-4 {

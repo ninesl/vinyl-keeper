@@ -234,11 +234,11 @@ func TestMyVinylFilterHandler_PassesUserID(t *testing.T) {
 	}
 
 	index := vinyl.BuildVinylIndex([]vinyl.VinylRecord{})
-	handler := MyVinylFilterHandler(
-		getMyVinyl,
-		func() *vinyl.VinylIndex { return index },
-		func(*http.Request) int64 { return 7 },
-	)
+	handler := MyVinylFilterHandler(MyVinylFilterHandlerParams{
+		GetMyVinyl: getMyVinyl,
+		GetIndex:   func() *vinyl.VinylIndex { return index },
+		GetUserID:  func(*http.Request) int64 { return 7 },
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/myvinyl/filter", nil)
 	w := httptest.NewRecorder()

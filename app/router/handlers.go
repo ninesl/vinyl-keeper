@@ -66,6 +66,12 @@ type SignedInUser struct {
 	UserName string
 }
 
+type MyVinylFilterHandlerParams struct {
+	GetMyVinyl func(userID int64) []vinyl.VinylWithPlayData
+	GetIndex   func() *vinyl.VinylIndex
+	GetUserID  func(*http.Request) int64
+}
+
 func RenderHandler(component templ.Component) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
@@ -116,18 +122,14 @@ func setUserCookie(w http.ResponseWriter, userID int64) {
 	})
 }
 
-func MyVinylFilterHandler(
-	getMyVinyl func(userID int64) []vinyl.VinylWithPlayData,
-	getIndex func() *vinyl.VinylIndex,
-	getUserID func(*http.Request) int64,
-) http.HandlerFunc {
+func MyVinylFilterHandler(params MyVinylFilterHandlerParams) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
 
 		criteria := parseFilterCriteria(r)
-		userID := getUserID(r)
-		vinyls := getMyVinyl(userID)
-		index := getIndex()
+		userID := params.GetUserID(r)
+		vinyls := params.GetMyVinyl(userID)
+		index := params.GetIndex()
 
 		filtered := vinyl.FilterVinylWithPlayData(vinyls, criteria, index)
 		ui.MyVinylGrid(toMyVinylViews(filtered)).Render(r.Context(), w)
@@ -437,16 +439,16 @@ func ChangePressingHandler(params ChangePressingHandlerParams) http.HandlerFunc 
 }
 
 type DeleteUserVinylHandlerParams struct {
-	GetUserID        func(*http.Request) int64
-	DeleteUserVinyl  func(vinylID, userID int64) error
-	GetIndex         func() *vinyl.VinylIndex
+	GetUserID       func(*http.Request) int64
+	DeleteUserVinyl func(vinylID, userID int64) error
+	GetIndex        func() *vinyl.VinylIndex
 }
 
 func DeleteUserVinylHandler(params DeleteUserVinylHandlerParams) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", values.ContentTypeHTML)
 
-		vinylID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue(values.ParamVinylID)), 10, 64)
+		vinylID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue(values.ParamVinylID)), 10, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			parts.ErrorMessage("Invalid vinyl ID").Render(r.Context(), w)
@@ -459,8 +461,7 @@ func DeleteUserVinylHandler(params DeleteUserVinylHandlerParams) http.HandlerFun
 			return
 		}
 
-		SetHXTrigger(w, values.EventVinylRegistered)
-		myCollectionModalPanel(params.GetIndex()).Render(r.Context(), w)
+		// Empty 200 response lets HTMX remove the targeted vinyl card via outerHTML.
 	}
 }
 

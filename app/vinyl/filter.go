@@ -197,10 +197,13 @@ func FilterVinyl(vinyls []VinylRecord, criteria FilterCriteria, index *VinylInde
 		}
 	}
 
-	// Sort by artist name, then album name.
+	// Sort by artist name, pressing year, then album name.
 	sort.Slice(filtered, func(i, j int) bool {
 		if filtered[i].VinylArtist != filtered[j].VinylArtist {
 			return filtered[i].VinylArtist < filtered[j].VinylArtist
+		}
+		if filtered[i].VinylPressingYear != filtered[j].VinylPressingYear {
+			return filtered[i].VinylPressingYear < filtered[j].VinylPressingYear
 		}
 		return filtered[i].VinylTitle < filtered[j].VinylTitle
 	})
@@ -221,10 +224,13 @@ func FilterVinylWithPlayData(vinyls []VinylWithPlayData, criteria FilterCriteria
 		}
 	}
 
-	// Sort by artist name, then album name (access via embedded VinylUnique)
+	// Sort by artist name, pressing year, then album name.
 	sort.Slice(filtered, func(i, j int) bool {
 		if filtered[i].VinylArtist != filtered[j].VinylArtist {
 			return filtered[i].VinylArtist < filtered[j].VinylArtist
+		}
+		if filtered[i].VinylPressingYear != filtered[j].VinylPressingYear {
+			return filtered[i].VinylPressingYear < filtered[j].VinylPressingYear
 		}
 		return filtered[i].VinylTitle < filtered[j].VinylTitle
 	})

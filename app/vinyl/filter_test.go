@@ -158,14 +158,14 @@ func TestFilterVinylUnique(t *testing.T) {
 		if len(filtered) != 3 {
 			t.Errorf("expected 3 vinyls with no filters, got %d", len(filtered))
 		}
-		// Check sorting by artist then title
-		// Artist One: Album A, Album C
+		// Check sorting by artist, year, then title
+		// Artist One: Album C (2019), Album A (2020)
 		// Artist Two: Album B
-		if filtered[0].VinylArtist != "Artist One" || filtered[0].VinylTitle != "Album A" {
-			t.Errorf("expected first vinyl to be 'Artist One - Album A', got '%s - %s'", filtered[0].VinylArtist, filtered[0].VinylTitle)
+		if filtered[0].VinylArtist != "Artist One" || filtered[0].VinylTitle != "Album C" {
+			t.Errorf("expected first vinyl to be 'Artist One - Album C', got '%s - %s'", filtered[0].VinylArtist, filtered[0].VinylTitle)
 		}
-		if filtered[1].VinylArtist != "Artist One" || filtered[1].VinylTitle != "Album C" {
-			t.Errorf("expected second vinyl to be 'Artist One - Album C', got '%s - %s'", filtered[1].VinylArtist, filtered[1].VinylTitle)
+		if filtered[1].VinylArtist != "Artist One" || filtered[1].VinylTitle != "Album A" {
+			t.Errorf("expected second vinyl to be 'Artist One - Album A', got '%s - %s'", filtered[1].VinylArtist, filtered[1].VinylTitle)
 		}
 		if filtered[2].VinylArtist != "Artist Two" || filtered[2].VinylTitle != "Album B" {
 			t.Errorf("expected third vinyl to be 'Artist Two - Album B', got '%s - %s'", filtered[2].VinylArtist, filtered[2].VinylTitle)

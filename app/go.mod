@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
-	github.com/a-h/templ v0.3.1001
+	github.com/a-h/templ v0.3.1020
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/templui/templui v1.10.0
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260501174432-fd0b90d21f9a

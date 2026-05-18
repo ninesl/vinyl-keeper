@@ -21,8 +21,8 @@ var validMethods = []string{
 }
 
 type RouteConfig struct {
-	Method      string
 	Endpoint    string
+	Method      string
 	HandlerFunc http.HandlerFunc
 }
 
@@ -34,6 +34,7 @@ type Router struct {
 	routes      []RouteConfig
 	middlewares []MiddlewareFunc
 	NotFound    http.HandlerFunc
+	handler     http.Handler
 }
 
 func NewRouter() *Router {
@@ -62,11 +63,13 @@ func (r *Router) RegisterRoutes(configs ...RouteConfig) error {
 		}
 		r.routes = append(r.routes, config)
 	}
+	r.handler = nil
 	return nil
 }
 
 func (r *Router) Use(mw MiddlewareFunc) {
 	r.middlewares = append(r.middlewares, mw)
+	r.handler = nil
 }
 
 func (r *Router) wrap(handler http.HandlerFunc) http.HandlerFunc {
@@ -77,7 +80,7 @@ func (r *Router) wrap(handler http.HandlerFunc) http.HandlerFunc {
 	return h.ServeHTTP
 }
 
-func (r *Router) ServeHTTP() (http.Handler, error) {
+func (r *Router) Handler() (http.Handler, error) {
 	mux := http.NewServeMux()
 	for _, config := range r.routes {
 		handler := r.wrap(config.HandlerFunc)
@@ -95,4 +98,16 @@ func (r *Router) ServeHTTP() (http.Handler, error) {
 		}
 	}
 	return mux, nil
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r.handler == nil {
+		handler, err := r.Handler()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		r.handler = handler
+	}
+	r.handler.ServeHTTP(w, req)
 }

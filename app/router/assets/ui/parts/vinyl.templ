@@ -139,7 +139,7 @@ func choiceConfig(mode types.VinylMode) choiceFormConfig {
 			FormClass:          "flex flex-col gap-3",
 			ListClass:          "max-h-[calc(85vh-16rem)] overflow-y-auto overflow-x-hidden p-2 pr-4",
 			RadioName:          values.QueryReleaseID,
-			SubmitLabel:        "Change Pressing",
+			SubmitLabel:        "Pressing",
 			EnableSubmit:       true,
 			ShowRegisterButton: false,
 		}
@@ -259,27 +259,23 @@ templ MyAlbumSpoilerOverlay(d VinylDisplay) {
 			<div class="absolute left-0 right-0 top-0 z-20 bg-black/55 px-2 py-2 text-xs text-white backdrop-blur-sm">
 				<div class="mb-1.5 flex items-center gap-1.5">
 					@dialog.Trigger(dialog.TriggerProps{For: "modal-zone-dialog", Attributes: templ.Attributes{
-						"hx-get":    fmt.Sprintf(values.EndpointModal+"/my-collection/%d"+values.EndpointPressings, d.ID),
+						"hx-get":    fmt.Sprintf(values.EndpointModal+values.EndpointMyCollection+"/%d"+values.EndpointPressings, d.ID),
 						"hx-target": "#" + values.IDModalZoneContent,
 						"hx-swap":   "innerHTML",
 						"onclick":   "event.preventDefault(); event.stopPropagation();",
 					}}) {
 						@button.Button(button.Props{Variant: button.VariantSecondary, Size: button.SizeSm, Class: "w-auto px-2 py-1 text-xs"}) {
-							Change Pressing
+							Pressing
 						}
 					}
-					<form
-						hx-delete={ values.EndpointMyVinyl + values.EndpointDelete }
-						hx-target={ "#" + values.IDModalZoneContent }
-						hx-swap="innerHTML"
-						onclick="event.stopPropagation();"
-						onsubmit="event.stopPropagation(); return confirm('Remove this record from your collection?');"
-					>
-						<input type="hidden" name={ values.ParamVinylID } value={ fmt.Sprintf("%d", d.ID) }/>
-						@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Class: "w-auto px-2 py-1 text-xs", Type: button.TypeSubmit}) {
-							Delete
-						}
-					</form>
+					@button.Button(button.Props{Variant: button.VariantDestructive, Size: button.SizeSm, Class: "w-auto px-2 py-1 text-xs", Type: button.TypeButton, Attributes: templ.Attributes{
+						"hx-delete": fmt.Sprintf(values.EndpointMyVinyl+values.EndpointDelete+"/%d", d.ID),
+						"hx-target": fmt.Sprintf("#vinyl-%d", d.ID),
+						"hx-swap":   "outerHTML",
+						"onclick":   "event.stopPropagation(); return confirm('Remove this record from your collection?');",
+					}}) {
+						Delete
+					}
 				</div>
 				<div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5">
 					<span class="text-white/70">Spins</span>
@@ -469,7 +465,7 @@ templ VinylChoiceCards(vinyls []types.Vinyl, similarities []float64, mode types.
 				Variant: button.VariantSecondary,
 				Attributes: templ.Attributes{
 					"type":      "button",
-					"hx-get":    values.EndpointModal + "/register",
+					"hx-get":    values.EndpointModal + values.EndpointRegister,
 					"hx-target": "#" + values.IDModalZoneContent,
 					"hx-swap":   "innerHTML",
 				},

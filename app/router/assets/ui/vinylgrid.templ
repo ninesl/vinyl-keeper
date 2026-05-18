@@ -5,9 +5,8 @@ import (
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/button"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/checkbox"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/dropdown"
-	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/icon"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/label"
-	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/tabs"
+	//"github.com/ninesl/vinyl-keeper/app/router/assets/ui/components/tabs"
 	"github.com/ninesl/vinyl-keeper/app/router/assets/ui/parts"
 	"github.com/ninesl/vinyl-keeper/app/router/types"
 	"github.com/ninesl/vinyl-keeper/app/router/values"
@@ -16,7 +15,7 @@ import (
 
 // MyVinylGrid renders the grid of vinyl with play data
 templ MyVinylGrid(vinyls []types.Vinyl) {
-	<div class="mx-auto grid max-w-7xl grid-cols-2 gap-2">
+	<div class="grid w-full grid-cols-3 gap-2">
 		if len(vinyls) > 0 {
 			for _, v := range vinyls {
 				@parts.VinylViewCard(v, types.ModeMyAlbum, types.VinylViewOpts{})
@@ -88,34 +87,34 @@ templ FilterCheckboxDropdown(labelText string, scopeID string, kind string, endp
 // FilterControls renders the filter UI for the my collection panel.
 templ FilterControls(endpoint string, index *vinyl.VinylIndex, scopeID string, targetID string, artistFilterID string) {
 	<div class="mx-auto mb-6 max-w-7xl rounded-lg border bg-card p-4">
-		@tabs.Tabs(tabs.Props{ID: scopeID + "-filter-tabs"}) {
+		/*@tabs.Tabs(tabs.Props{ID: scopeID + "-filter-tabs"}) {
 			@tabs.List(tabs.ListProps{Class: "w-full md:w-auto"}) {
 				@tabs.Trigger(tabs.TriggerProps{Value: "select", IsActive: true}) {
 					@icon.FileXCorner(icon.Props{Class: "size-4"})
 					<span>Filter</span>
 				}
-				/*
+				
 				@tabs.Trigger(tabs.TriggerProps{Value: "radio"}) {
 					@icon.FilePlusCorner(icon.Props{Class: "size-4"})
 					<span>Accumulative</span>
-				}*/
-			}
-			@tabs.Content(tabs.ContentProps{Value: "select", IsActive: true}) {
-				<div id={ scopeID + "-select-controls" } class="mt-4 grid gap-4 md:grid-cols-3">
-					{{
-						includeAllSelect := fmt.Sprintf(
-							// "#%s [name='%s'], #%s [name='%s'], #%s [name='%s']",
-							"#%s [name='%s'], #%s [name='%s']",
-							scopeID+"-select-controls", values.QueryArtist,
-							//scopeID+"-select-controls", values.QueryGenre,
-							scopeID+"-select-controls", values.QueryStyle)
-					}}
-					@FilterSelect("Artist", artistFilterID, values.QueryArtist, "All Artists", endpoint, targetID, includeAllSelect, index.Artists)
-					//@FilterSelect("Genres", "genre-filter-"+scopeID, values.QueryGenre, "All Genres", endpoint, targetID, includeAllSelect, index.Genres)
-					@FilterSelect("Styles", "style-filter-"+scopeID, values.QueryStyle, "All Styles", endpoint, targetID, includeAllSelect, index.Styles)
-				</div>
-			}
-			/*
+				}
+			}*/
+		//@tabs.Content(tabs.ContentProps{Value: "select", IsActive: true}) {
+		<div id={ scopeID + "-select-controls" } class="mt-4 grid gap-4 md:grid-cols-3">
+			{{
+				includeAllSelect := fmt.Sprintf(
+					// "#%s [name='%s'], #%s [name='%s'], #%s [name='%s']",
+					"#%s [name='%s'], #%s [name='%s']",
+					scopeID+"-select-controls", values.QueryArtist,
+					//scopeID+"-select-controls", values.QueryGenre,
+					scopeID+"-select-controls", values.QueryStyle)
+			}}
+			@FilterSelect("Artist", artistFilterID, values.QueryArtist, "All Artists", endpoint, targetID, includeAllSelect, index.Artists)
+			//@FilterSelect("Genres", "genre-filter-"+scopeID, values.QueryGenre, "All Genres", endpoint, targetID, includeAllSelect, index.Genres)
+			@FilterSelect("Styles", "style-filter-"+scopeID, values.QueryStyle, "All Styles", endpoint, targetID, includeAllSelect, index.Styles)
+		</div>
+		//}
+		/*
 @tabs.Content(tabs.ContentProps{Value: "radio"}) {
 				<div id={ scopeID + "-radio-controls" } class="mt-4 grid gap-4 md:grid-cols-3">
 					{{ includeAllRadio := fmt.Sprintf("#%s [name='%s'], #%s [name='%s'], #%s [name='%s']", scopeID+"-radio-controls", values.QueryArtist, scopeID+"-radio-controls", values.QueryGenre, scopeID+"-radio-controls", values.QueryStyle) }}
@@ -124,7 +123,7 @@ templ FilterControls(endpoint string, index *vinyl.VinylIndex, scopeID string, t
 					@FilterCheckboxDropdown("Styles", scopeID+"-radio-controls", values.QueryStyle, endpoint, targetID, includeAllRadio, index.Styles)
 				</div>
 			}*/
-		}
+		//}
 	</div>
 }
 
@@ -135,7 +134,8 @@ templ FilterPanel(endpoint string, index *vinyl.VinylIndex, scopeID string, targ
 			id={ targetID }
 			hx-get={ endpoint }
 			hx-swap="innerHTML"
-			hx-trigger={ fmt.Sprintf("load, %s from:body, %s from:body, %s from:body", values.EventVinylRegistered, values.EventUserSignedIn, values.EventUserSignedOut) }
+			hx-trigger={ fmt.Sprintf("load, %s from:body, %s from:body, %s from:body", 
+				values.EventVinylRegistered, values.EventUserSignedIn, values.EventUserSignedOut) }
 		></div>
 	</div>
 }

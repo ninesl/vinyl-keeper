@@ -10,16 +10,20 @@ type Server struct {
 }
 
 func NewServer(addr string) *Server {
+	return NewServerWithRouter(addr, NewRouter())
+}
+
+func NewServerWithRouter(addr string, router *Router) *Server {
 	return &Server{
-		Router: NewRouter(),
+		Router: router,
 		Addr:   addr,
 	}
 }
 
 func (s *Server) ListenAndServe() error {
-	handler, err := s.Router.ServeHTTP()
-	if err != nil {
-		return err
-	}
-	return http.ListenAndServe(s.Addr, handler)
+	return http.ListenAndServe(s.Addr, s.Router)
+}
+
+func (s *Server) ListenAndServeTLS(certFile, keyFile string) error {
+	return http.ListenAndServeTLS(s.Addr, certFile, keyFile, s.Router)
 }
